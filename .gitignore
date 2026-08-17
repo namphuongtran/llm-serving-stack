@@ -1,0 +1,20 @@
+# Secrets never enter git. Tokens are supplied through the environment.
+.env
+.env.*
+*.token
+kubeconfig
+*.kubeconfig
+
+# Model weights are large and are fetched, not committed.
+*.gguf
+*.safetensors
+*.bin
+models/**/weights/
+
+# Local scratch
+.DS_Store
+tmp/
+*.log
+
+# Benchmark raw output that has not been curated into a dated result directory
+bench/raw/

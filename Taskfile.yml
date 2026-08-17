@@ -1,0 +1,86 @@
+# Single entry point for local operations.
+#
+# Scaffolding stage: task names and their order are settled, the bodies are not
+# implemented yet. Each stub prints what it will do so the intended flow is
+# reviewable before any of it is built.
+
+version: "3"
+
+vars:
+  CLUSTER_NAME: llm-serving-stack
+  NAMESPACE: llm
+  HOSTNAME: llm.localtest.me
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  # --- local lifecycle -----------------------------------------------------
+
+  local:up:
+    desc: Empty machine to a ready service (phase 1)
+    cmds:
+      - echo "TODO: kind cluster, then platform waves 0-4, then wait for ready"
+
+  local:down:
+    desc: Delete the local cluster
+    cmds:
+      - echo "TODO: kind delete cluster --name {{.CLUSTER_NAME}}"
+
+  local:status:
+    desc: Show what is running and what is not ready
+    cmds:
+      - echo "TODO: summarise pods, gateway, InferenceService conditions"
+
+  # --- using the service ---------------------------------------------------
+
+  token:
+    desc: Obtain a JWT from Keycloak
+    cmds:
+      - echo "TODO: client credentials grant against https://{{.HOSTNAME}}/realms/llm"
+
+  chat:
+    desc: Send one streaming chat completion
+    cmds:
+      - echo "TODO: POST /v1/chat/completions with the JWT, stream the response"
+
+  # --- verification --------------------------------------------------------
+
+  test:smoke:
+    desc: End-to-end checks, including 401 and 429 paths
+    cmds:
+      - echo "TODO: run tests/smoke"
+
+  test:contract:
+    desc: Assert the engine contract, so engines stay swappable
+    cmds:
+      - echo "TODO: run tests/contract"
+
+  lint:
+    desc: Build every overlay and validate against CRD schemas
+    cmds:
+      - echo "TODO: kustomize build + kubeconform for every overlay"
+
+  policy:
+    desc: Run admission policies locally, the same ones the cluster enforces
+    cmds:
+      - echo "TODO: evaluate policy/ against rendered manifests"
+
+  # --- measurement ---------------------------------------------------------
+
+  bench:
+    desc: Run the benchmark scenarios and write a dated result directory
+    cmds:
+      - echo "TODO: benchmark_serving over bench/scenarios, write bench/results/<date>-<machine>"
+
+  drill:recovery:
+    desc: Delete the namespace, let Argo CD rebuild, measure time to first token
+    cmds:
+      - echo "TODO: destructive drill; records the real recovery time objective"
+
+  drill:drain:
+    desc: Drain a node and assert the service stays available
+    cmds:
+      - echo "TODO: cordon and drain, watch the PodDisruptionBudget hold"
