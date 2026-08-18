@@ -1,0 +1,40 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ornith-9b
+  namespace: llm
+spec:
+  predictor:
+    containers:
+      - name: kserve-container
+        volumeMounts:
+          - { name: models, mountPath: /mnt/models }
+    initContainers:
+      - name: fetch-weights
+        # Pinned by digest, not :latest. Resolved on 2026-08-19 with
+        # `docker buildx imagetools inspect curlimages/curl:8.21.0`, this is the
+        # linux/arm64/v8 manifest digest from that inspect output; recorded
+        # with its date under images.curl in versions.yaml.
+        image: curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -eu
+            if [ -f /mnt/models/model.gguf ]; then
+              echo "weights already present"; exit 0
+            fi
+            curl -fL --retry 3 -o /mnt/models/model.gguf \
+              "https://huggingface.co/${HF_REPO}/resolve/main/${HF_FILE}"
+            echo "${SHA256}  /mnt/models/model.gguf" | sha256sum -c -
+        env:
+          # Values come from models/ornith-9b/base/model.yaml. They are written
+          # in directly, not templated: a sed step nobody runs would otherwise
+          # leave a placeholder in the committed file.
+          - { name: HF_REPO, value: "unsloth/Ornith-1.0-9B-GGUF" }
+          - { name: HF_FILE, value: "Ornith-1.0-9B-Q4_K_M.gguf" }
+          - { name: SHA256, value: "641675b356a4463677a02a0d703f7b571b39f0b747fbd270b379c848edc29e84" }
+        volumeMounts:
+          - { name: models, mountPath: /mnt/models }
+    volumes:
+      - name: models
+        emptyDir: { sizeLimit: 12Gi }

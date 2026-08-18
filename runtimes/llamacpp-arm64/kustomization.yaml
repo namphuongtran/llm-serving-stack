@@ -1,0 +1,9 @@
+# Lets model overlays pull this runtime in as a kustomize base (a directory
+# with its own kustomization.yaml) rather than a bare file reference. A bare
+# file outside an overlay's own directory tree trips kustomize's load
+# restriction; a base directory does not, and no model-specific content
+# belongs in this runtime regardless of how it is referenced.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - servingruntime.yaml

@@ -77,3 +77,9 @@ images:
   # manifest digest, confirmed present in the same inspect output for both images.
   llamacpp_server: "ghcr.io/ggml-org/llama.cpp@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b"
   keycloak: "quay.io/keycloak/keycloak@sha256:89d56312ace1d9b0bf8168f1a92ea135ba185d2844285f7651cb50774e47c1d8"
+  # read 2026-08-19 via `docker buildx imagetools inspect curlimages/curl:8.21.0`
+  # (talks to the registry, no docker daemon needed); digest is the
+  # linux/arm64/v8 manifest digest from that inspect output. Used by the
+  # fetch-weights init container in models/ornith-9b/overlays/local, pinned by
+  # digest rather than :latest per the repository-wide digest-pinning rule.
+  curl: "curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84"

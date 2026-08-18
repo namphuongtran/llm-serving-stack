@@ -1,0 +1,19 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ornith-9b
+  namespace: llm
+spec:
+  parentRefs: [{ name: llm, namespace: istio-system }]
+  hostnames: ["llm.localtest.me"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /v1 }
+      backendRefs:
+        - name: ornith-9b-predictor
+          port: 80
+      timeouts:
+        # Streaming answers run for tens of seconds. The default is far too
+        # short and truncates responses mid-sentence.
+        request: 600s
+        backendRequest: 600s

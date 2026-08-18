@@ -1,0 +1,58 @@
+# Runtime plug-in. Nothing about a specific model belongs in this file: the
+# model name, the served alias, and the weights it loads all live under
+# models/ornith-9b/. Swapping models must never touch this file.
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  name: llamacpp-arm64
+  namespace: llm
+spec:
+  supportedModelFormats:
+    - name: gguf
+      version: "1"
+      autoSelect: false
+  protocolVersions: ["v2"]
+  containers:
+    - name: kserve-container
+      # Pinned digest, read from versions.yaml (images.llamacpp_server) on
+      # 2026-08-19. This is not a placeholder: the value below is the same
+      # string `yq -r '.images.llamacpp_server' versions.yaml` prints.
+      image: ghcr.io/ggml-org/llama.cpp@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b
+      # No --alias here: the served model name is a per-model fact and belongs
+      # in the model's own InferenceService (spec.predictor.model.args), which
+      # KServe appends to this list. Naming a specific model in this runtime
+      # would violate the one thing this file exists to guarantee: swapping
+      # models touches models/, never runtimes/.
+      args:
+        - --model
+        - /mnt/models/model.gguf
+        - --host
+        - 0.0.0.0
+        - --port
+        - "8080"
+        - --ctx-size
+        - "4096"
+        - --parallel
+        - "2"
+        - --metrics            # exposes /metrics in Prometheus format
+      ports:
+        # The name matters: the PodMonitor in Task 7 selects the port by name.
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+      readinessProbe:
+        # /health reports ready only once weights are loaded, which is the
+        # contract requirement. A TCP check would lie here.
+        httpGet: { path: /health, port: 8080 }
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        failureThreshold: 120
+      livenessProbe:
+        httpGet: { path: /health, port: 8080 }
+        initialDelaySeconds: 120
+        periodSeconds: 30
+      volumeMounts:
+        - { name: models, mountPath: /mnt/models }
+      resources:
+        requests: { cpu: "2", memory: 8Gi }
+        limits: { cpu: "6", memory: 12Gi }

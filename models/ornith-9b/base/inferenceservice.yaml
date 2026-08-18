@@ -1,0 +1,28 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ornith-9b
+  namespace: llm
+  annotations:
+    serving.kserve.io/deploymentMode: RawDeployment
+spec:
+  predictor:
+    minReplicas: 1          # never zero by default: cold start is minutes
+    model:
+      modelFormat: { name: gguf }
+      runtime: llamacpp-arm64
+      # Left empty on purpose, in every overlay: a non-empty value would make
+      # KServe inject its own storage-initializer, which expects a model
+      # repository rather than one GGUF file (risk R1). The fetch-weights
+      # init container in each overlay's patch fetches the file itself.
+      storageUri: ""
+      # The friendly served name is a model fact, not a runtime fact: KServe
+      # appends this to the ServingRuntime's args, so llama.cpp serves the
+      # model as "ornith-9b" instead of the raw file path. If KServe's
+      # arg-merging does not behave this way in practice (risk R2 in the
+      # design spec), fall back to a fully custom predictor container here
+      # and record that in a new ADR; the contract tests do not change either
+      # way.
+      args:
+        - --alias
+        - ornith-9b
