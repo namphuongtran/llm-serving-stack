@@ -1,0 +1,20 @@
+# Scale-to-zero is not the default posture (see ../local/scaledobject.yaml's
+# minReplicaCount: 1 comment). This overlay is the opt-in alternative for
+# whoever decides the cold start it introduces is worth the idle-cost saving,
+# with that cold start recorded as a real, dated number in docs/02-why-kserve.md
+# rather than left as an opinion - see the Unmeasured marker there for the
+# command that produces it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: llm
+resources:
+  - ../local
+patches:
+  - target: { kind: ScaledObject, name: ornith-9b }
+    patch: |
+      - op: replace
+        path: /spec/minReplicaCount
+        value: 0
+      - op: replace
+        path: /spec/cooldownPeriod
+        value: 60

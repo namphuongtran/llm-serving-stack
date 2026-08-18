@@ -1,0 +1,36 @@
+# Reads the normalised series from Task 7, so the same object works in phase
+# 2 against vLLM: it never names an engine.
+#
+# apiVersion confirmed against the installed CRD, not carried over from
+# memory: `helm template` of kedacore/keda --version 2.20.2 (the version
+# platform/40-keda/install.sh pins) on 2026-08-19 renders scaledobjects.keda.sh
+# with exactly one served+storage version, v1alpha1. The `prometheus` trigger
+# metadata keys (serverAddress, query, threshold) are confirmed against
+# KEDA's own scaler documentation
+# (https://keda.sh/docs/2.17/scalers/prometheus/, read 2026-08-19): all three
+# are real, and none of them is named `metricName`, which older KEDA
+# versions required and this one does not.
+#
+# serverAddress is the Service kube-prometheus-stack-prometheus, confirmed by
+# rendering the pinned kube-prometheus-stack chart on 2026-08-19 (see
+# tests/smoke/05-observability.bats) - the same name Task 7's install.sh and
+# smoke test use, so there is exactly one Prometheus service name in this
+# repository, not two.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: ornith-9b
+  namespace: llm
+spec:
+  scaleTargetRef:
+    name: ornith-9b-predictor
+  minReplicaCount: 1        # not zero: cold start is dominated by weight loading
+  maxReplicaCount: 3
+  pollingInterval: 15
+  cooldownPeriod: 120
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.observability.svc:9090
+        query: llmstack:requests_waiting
+        threshold: "2"

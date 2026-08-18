@@ -1,0 +1,7 @@
+# Field path checked against the real chart with:
+#   helm show values kedacore/keda --version 2.20.2
+# on 2026-08-19. `resources.operator.{requests,limits}` exists at that path.
+resources:
+  operator:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
