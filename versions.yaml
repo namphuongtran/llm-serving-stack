@@ -1,7 +1,7 @@
 # Every version here was read from an upstream source on the date shown.
 # Never edit a version without updating its `read` date.
 meta:
-  read: "2026-08-17"
+  read: "2026-08-19"
   machine: "Apple M4, arm64, 32 GB"
 
 kubernetes:
@@ -9,7 +9,7 @@ kubernetes:
   min_server: "1.32"     # floor named by Envoy AI Gateway prerequisites; we exceed it
 
 charts:
-  # read 2026-08-17 via `helm search repo <repo>/<chart> --versions | head -3`
+  # read 2026-08-19 via `helm search repo <repo>/<chart> --versions | head -3`
   # after `helm repo add` against each upstream repo and `helm repo update`
   cert_manager: "v1.21.1"              # jetstack/cert-manager, must be >= v1.17.0 (KServe requirement)
   istio_base: "1.30.3"                 # istio/base
@@ -23,15 +23,18 @@ charts:
   kyverno: "3.8.2"                     # kyverno/kyverno
 
 crds:
-  # read 2026-08-17 via:
-  #   curl -s https://api.github.com/repos/kubernetes-sigs/gateway-api/releases | jq -r '.[0:5][] | .tag_name'
-  # newest release with prerelease=false was v1.6.1 (published 2026-07-16); v1.6.0-rc.* and
-  # monthly-* tags are pre-release/experimental channels and were excluded.
-  gateway_api: "v1.6.1"
+  # The criterion here is the version KServe v0.20.0 is built against, not the newest
+  # upstream release (the newest release, v1.6.1, is a different question and was the
+  # wrong pin recorded in an earlier pass of this file).
+  # read 2026-08-19, two independent checks, both say v1.5.1:
+  #   1. `curl -s https://raw.githubusercontent.com/kserve/kserve/v0.20.0/go.mod | grep gateway-api`
+  #      -> `sigs.k8s.io/gateway-api v1.5.1` (ran this one myself, 2026-08-19)
+  #   2. KServe v0.20.0 release notes: "deps: bump Gateway API to v1.5.1" (#5478)
+  gateway_api: "v1.5.1"
 
 kserve:
   version: "v0.20.0"     # released 2026-08-06, from kserve/kserve releases page
-  # read 2026-08-17: `helm show chart oci://ghcr.io/kserve/charts/kserve --version v0.20.0` failed
+  # read 2026-08-19: `helm show chart oci://ghcr.io/kserve/charts/kserve --version v0.20.0` failed
   # (chart "kserve" does not exist under that path). Listed the actual chart directories with:
   #   curl -s "https://api.github.com/repos/kserve/kserve/contents/charts?ref=v0.20.0" | jq -r '.[].name'
   # which returned 11 entries (_common is an unpublished library chart, not a helm release).
@@ -51,12 +54,18 @@ kserve:
     - "oci://ghcr.io/kserve/charts/kserve-localmodel-resources:v0.20.0"   # sha256:854742bba1c8cbf8013d1f50750e707563a7d2c5358e36c3857dda36935a6686
 
 kuadrant:
-  # read 2026-08-17: `helm repo add kuadrant https://kuadrant.io/helm-charts && helm repo update kuadrant
+  # read 2026-08-19: `helm repo add kuadrant https://kuadrant.io/helm-charts && helm repo update kuadrant
   # && helm search repo kuadrant --versions | head -5`. Repo: https://kuadrant.io/helm-charts
-  operator_chart: "kuadrant/kuadrant-operator:1.5.2"
+  # This is a classic repo reference, not an OCI one: "name:version" does not resolve
+  # (`helm show chart "kuadrant/kuadrant-operator:1.5.2"` fails with "no chart name
+  # found"). Split into chart + version, like the entries under `charts:`, and verified
+  # with `helm show chart kuadrant/kuadrant-operator --version 1.5.2` (succeeded, printed
+  # the chart's Chart.yaml).
+  operator_chart: "kuadrant/kuadrant-operator"
+  operator_chart_version: "1.5.2"
 
 images:
-  # read 2026-08-17 via `docker buildx imagetools inspect <ref>`; digest is the linux/arm64
+  # read 2026-08-19 via `docker buildx imagetools inspect <ref>`; digest is the linux/arm64
   # manifest digest, confirmed present in the same inspect output for both images.
   llamacpp_server: "ghcr.io/ggml-org/llama.cpp@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b"
   keycloak: "quay.io/keycloak/keycloak@sha256:89d56312ace1d9b0bf8168f1a92ea135ba185d2844285f7651cb50774e47c1d8"
