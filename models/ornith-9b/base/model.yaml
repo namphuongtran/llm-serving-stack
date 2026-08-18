@@ -2,23 +2,32 @@
 model:
   name: ornith-9b
   license: MIT
-  card: https://huggingface.co/deepreinforce-ai/Ornith-1.0-9B
+  # deepreinforce-ai/Ornith-1.0-9B 307-redirects here (org rename), confirmed
+  # 2026-08-19: `curl -sI https://huggingface.co/deepreinforce-ai/Ornith-1.0-9B`
+  # -> "location: /ornith-ai/Ornith-1.0-9B".
+  card: https://huggingface.co/ornith-ai/Ornith-1.0-9B
   # bf16 is about 19 GB and needs a GPU; local runs the Q4_K_M quantisation.
   local:
-    # Chosen from the 20 GGUF repositories the Hugging Face search API returned
-    # for "Ornith-1.0-9B-GGUF" on 2026-08-19. unsloth/Ornith-1.0-9B-GGUF carries
-    # base_model:quantized:deepreinforce-ai/Ornith-1.0-9B, so it quantises the
-    # exact model named above, and its Q4_K_M build is the file used here.
-    hf_repo: "unsloth/Ornith-1.0-9B-GGUF"
-    hf_file: "Ornith-1.0-9B-Q4_K_M.gguf"
+    # First-party build, from the model's own organisation: ornith-ai also
+    # publishes the GGUF repository, with its own Q4_K_M file, so it is
+    # preferred over a third-party requantisation.
+    hf_repo: "ornith-ai/Ornith-1.0-9B-GGUF"
+    hf_file: "ornith-1.0-9b-Q4_K_M.gguf"
     # sha256 obtained two ways on 2026-08-19, both agree:
-    #   1. `curl -s "https://huggingface.co/api/models/unsloth/Ornith-1.0-9B-GGUF?blobs=true"`
+    #   1. `curl -s "https://huggingface.co/api/models/ornith-ai/Ornith-1.0-9B-GGUF?blobs=true"`
     #      -> .siblings[] where rfilename matches Q4_K_M -> .lfs.sha256
     #      (the git-LFS object id for this file, which for an LFS object is its sha256)
-    #   2. `curl -sI "https://huggingface.co/unsloth/Ornith-1.0-9B-GGUF/resolve/main/Ornith-1.0-9B-Q4_K_M.gguf"`
+    #   2. `curl -sI "https://huggingface.co/ornith-ai/Ornith-1.0-9B-GGUF/resolve/main/ornith-1.0-9b-Q4_K_M.gguf"`
     #      -> x-linked-etag response header
     # Neither command downloaded the file itself.
-    sha256: "641675b356a4463677a02a0d703f7b571b39f0b747fbd270b379c848edc29e84"
-    # From the same ?blobs=true response: .siblings[].size = 5701067872 bytes,
-    # i.e. 5701067872 / 1e9.
-    approx_size_gb: 5.7
+    sha256: "5720d1f671b4996481274fffe01868c3c36e87c135cc8538471cc7bd6087b106"
+    # From the same ?blobs=true response: .siblings[].size = 5629108704 bytes,
+    # i.e. 5629108704 / 1e9.
+    approx_size_gb: 5.6
+  # Documented alternative, not used: unsloth/Ornith-1.0-9B-GGUF, a
+  # third-party requantisation tagged base_model:quantized:deepreinforce-ai/Ornith-1.0-9B
+  # (the model's pre-rename name). Its Q4_K_M file is
+  # Ornith-1.0-9B-Q4_K_M.gguf, sha256
+  # 641675b356a4463677a02a0d703f7b571b39f0b747fbd270b379c848edc29e84,
+  # verified the same two ways on 2026-08-19. Kept here as a fallback if the
+  # first-party repository is ever removed or renamed again.

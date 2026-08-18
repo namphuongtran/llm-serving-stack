@@ -20,6 +20,7 @@ spec:
         args:
           - |
             set -eu
+            command -v sha256sum >/dev/null || { echo "sha256sum missing in init image" >&2; exit 1; }
             if [ -f /mnt/models/model.gguf ]; then
               echo "weights already present"; exit 0
             fi
@@ -30,9 +31,9 @@ spec:
           # Values come from models/ornith-9b/base/model.yaml. They are written
           # in directly, not templated: a sed step nobody runs would otherwise
           # leave a placeholder in the committed file.
-          - { name: HF_REPO, value: "unsloth/Ornith-1.0-9B-GGUF" }
-          - { name: HF_FILE, value: "Ornith-1.0-9B-Q4_K_M.gguf" }
-          - { name: SHA256, value: "641675b356a4463677a02a0d703f7b571b39f0b747fbd270b379c848edc29e84" }
+          - { name: HF_REPO, value: "ornith-ai/Ornith-1.0-9B-GGUF" }
+          - { name: HF_FILE, value: "ornith-1.0-9b-Q4_K_M.gguf" }
+          - { name: SHA256, value: "5720d1f671b4996481274fffe01868c3c36e87c135cc8538471cc7bd6087b106" }
         volumeMounts:
           - { name: models, mountPath: /mnt/models }
     volumes:

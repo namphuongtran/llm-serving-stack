@@ -24,9 +24,13 @@ setup() {
       \"model\": \"ornith-9b\",
       \"messages\": [{\"role\":\"user\",\"content\":\"Count to five.\"}],
       \"max_tokens\": 48, \"stream\": true
-    }' | grep -c '^data: '"
+    }'"
   [ "$status" -eq 0 ]
-  [ "$output" -gt 1 ]
+  # More than one chunk: the count of SSE "data: " lines.
+  [ "$(echo "$output" | grep -c '^data: ')" -gt 1 ]
+  # Terminates with [DONE]: a stream that hangs without ever sending the
+  # terminator would otherwise pass on chunk count alone.
+  [[ "$output" == *'data: [DONE]'* ]]
 }
 
 @test "response reports token usage, which the quota policy depends on" {
@@ -35,6 +39,7 @@ setup() {
       \"messages\": [{\"role\":\"user\",\"content\":\"hi\"}],
       \"max_tokens\": 8
     }' | jq -r '.usage.total_tokens'"
+  [ "$status" -eq 0 ]
   [ "$output" -gt 0 ]
 }
 

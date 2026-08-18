@@ -17,9 +17,29 @@ wait_for() {
   done
 }
 
-# require_arm64 <image ref> — fails when no linux/arm64 manifest exists
+# require_arm64 <image ref> — fails when no linux/arm64 manifest exists.
+#
+# A tag reference (e.g. repo:server) usually resolves to a manifest LIST: the
+# plain `imagetools inspect` output prints one "Platform: linux/arm64" line
+# per architecture, so grepping that text works.
+#
+# A digest reference (e.g. repo@sha256:...) — which is how every image in
+# versions.yaml is pinned — resolves to a single manifest. Plain
+# `imagetools inspect` output for a single manifest has no Platform: line at
+# all to grep for, so that same grep silently reports "not arm64" for every
+# correctly pinned arm64 image. `--format '{{json .Image}}'` avoids this: for
+# a single manifest it returns the image config directly, with a top-level
+# "architecture" field; for a manifest list with more than one real platform
+# it returns an object keyed by "os/arch" (e.g. "linux/arm64") instead.
 require_arm64() {
-  docker buildx imagetools inspect "$1" 2>/dev/null | grep -q 'linux/arm64'
+  local ref="$1"
+  local json
+  json=$(docker buildx imagetools inspect --format '{{json .Image}}' "$ref" 2>/dev/null) || return 1
+  jq -e '
+    if has("architecture") then .architecture == "arm64"
+    else has("linux/arm64")
+    end
+  ' >/dev/null 2>&1 <<<"$json"
 }
 
 # get_token <client-id> — client credentials grant, prints the access token.
