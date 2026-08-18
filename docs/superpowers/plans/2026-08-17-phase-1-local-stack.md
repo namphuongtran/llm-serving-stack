@@ -1936,9 +1936,15 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 CHART="$(yq -r '.kuadrant.operator_chart' versions.yaml)"
-[ -n "$CHART" ] && [ "$CHART" != "null" ] || { echo "kuadrant.operator_chart not pinned" >&2; exit 1; }
+CHART_VERSION="$(yq -r '.kuadrant.operator_chart_version' versions.yaml)"
+for v in CHART CHART_VERSION; do
+  val="${!v}"
+  [ -n "$val" ] && [ "$val" != "null" ] || { echo "kuadrant.${v,,} not pinned in versions.yaml" >&2; exit 1; }
+done
 
-helm upgrade --install kuadrant-operator "$CHART" \
+# --version is not optional here. Without it helm silently installs whatever is
+# newest, which loses the pin without producing an error.
+helm upgrade --install kuadrant-operator "$CHART" --version "$CHART_VERSION" \
   --namespace kuadrant-system --create-namespace --wait --timeout 10m
 
 # The Kuadrant CR turns the operator on and deploys Authorino and Limitador.
