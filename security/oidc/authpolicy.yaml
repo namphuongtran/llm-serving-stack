@@ -1,0 +1,36 @@
+# Verification happens at the gateway using the issuer's public keys.
+# No datastore is consulted on the request path, which keeps inference stateless.
+#
+# Shape and apiVersion confirmed against the installed CRD, not carried over
+# from memory: `helm template` of kuadrant/kuadrant-operator --version 1.5.2
+# (the version platform/25-kuadrant/install.sh pins) on 2026-08-19 renders
+# authpolicies.kuadrant.io with exactly one served+storage version, v1. That
+# same rendered schema confirms every field path used below:
+# spec.rules.authentication.<name>.jwt.issuerUrl,
+# spec.rules.authentication.<name>.credentials.authorizationHeader.prefix, and
+# spec.rules.response.success.filters.<name>.json.properties.<key>.selector
+# (response lives under rules, not at the top level of spec).
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: llm-jwt
+  namespace: llm
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: ornith-9b
+  rules:
+    authentication:
+      keycloak:
+        jwt:
+          issuerUrl: http://llm.localtest.me/realms/llm
+        credentials:
+          authorizationHeader: { prefix: Bearer }
+    response:
+      success:
+        filters:
+          identity:
+            json:
+              properties:
+                tier: { selector: auth.identity.tier }
