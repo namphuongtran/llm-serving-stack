@@ -1,0 +1,29 @@
+# Standard mode. No Knative, no ModelMesh (its repository was archived
+# 2026-04-14). Gateway API on, because KServe defaults it to false.
+#
+# Keys verified 2026-08-19 against the real v0.20.0 chart (not the plan's
+# guess, checked independently):
+#   helm show values oci://ghcr.io/kserve/charts/kserve-resources --version v0.20.0
+#   helm template t oci://ghcr.io/kserve/charts/kserve-resources --version v0.20.0 -f <this file>
+# The second command was run against a copy of this file and confirmed the
+# rendered kserve/inferenceservice-config ConfigMap actually carries:
+#   .data.deploy  -> {"defaultDeploymentMode": "RawDeployment", ...}
+#   .data.ingress -> {"enableGatewayApi": true, "ingressClassName": "istio",
+#                      "ingressGateway": "istio-system/llm", ...}
+# which is what tests/smoke/04-kserve.bats asserts. All four keys below
+# (deploymentMode, enableGatewayApi, className, gateway) exist verbatim in
+# `kserve-resources`'s values schema at kserve.controller.* / .gateway.ingressGateway.* -
+# the plan's guessed key names were correct, so nothing was renamed.
+#
+# This values file is passed only to the kserve-resources chart (see
+# install.sh) - it is the one chart, of the ten kserve.charts entries in
+# versions.yaml, that owns the controller and the inferenceservice-config
+# ConfigMap. None of the ten charts is literally named "kserve".
+kserve:
+  controller:
+    deploymentMode: RawDeployment
+    gateway:
+      ingressGateway:
+        enableGatewayApi: true
+        className: istio
+        gateway: istio-system/llm
