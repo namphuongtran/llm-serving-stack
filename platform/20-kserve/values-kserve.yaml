@@ -16,9 +16,12 @@
 # the plan's guessed key names were correct, so nothing was renamed.
 #
 # This values file is passed only to the kserve-resources chart (see
-# install.sh) - it is the one chart, of the ten kserve.charts entries in
-# versions.yaml, that owns the controller and the inferenceservice-config
-# ConfigMap. None of the ten charts is literally named "kserve".
+# install.sh) - it is the second of the two charts in versions.yaml's
+# kserve.charts install list (kserve-crd, then kserve-resources), and the
+# one that owns the controller and the inferenceservice-config ConfigMap.
+# It is not literally named "kserve"; the eight other charts published for
+# v0.20.0 (llmisvc, localmodel, the -minimal alternates, runtime-configs)
+# are recorded under kserve.charts_available and are not installed here.
 kserve:
   controller:
     deploymentMode: RawDeployment

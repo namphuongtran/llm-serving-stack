@@ -48,17 +48,65 @@ kserve:
   # which returned 11 entries (_common is an unpublished library chart, not a helm release).
   # Verified each of the remaining 10 resolves at v0.20.0 with
   # `helm show chart oci://ghcr.io/kserve/charts/<name> --version v0.20.0` (all succeeded).
-  # Digest is the manifest digest each pull printed.
+  # Digest is the manifest digest each pull printed. None of these ten digests
+  # were re-resolved in the 2026-08-19 fix round below; only which key they
+  # live under changed.
+  #
+  # charts: the ORDERED INSTALL LIST for phase 1 Standard mode - not the
+  # published-chart catalogue (that split in two, below, on 2026-08-19 review).
+  # Confirmed against KServe's own Standard-mode install guide
+  # (https://kserve.github.io/website/docs/admin-guide/kubernetes-deployment,
+  # read 2026-08-19): it installs exactly two charts, in this order:
+  #   helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd --version v0.20.0
+  #   helm install kserve oci://ghcr.io/kserve/charts/kserve-resources --version v0.20.0 \
+  #     --set kserve.controller.deploymentMode=Standard \
+  #     --set kserve.controller.gateway.ingressGateway.enableGatewayApi=true \
+  #     --set kserve.controller.gateway.ingressGateway.kserveGateway=kserve/kserve-ingress-gateway
+  # (this repo passes the same settings via platform/20-kserve/values-kserve.yaml
+  # instead of --set, and uses the legacy alias "RawDeployment" for
+  # deploymentMode because tests/smoke/04-kserve.bats asserts that literal
+  # string; kserve/pkg/constants normalises RawDeployment to Standard at read
+  # time, so the two strings are behaviourally identical - confirmed by reading
+  # kserve/pkg/constants/constants.go at tag v0.20.0.)
   charts:
     - "oci://ghcr.io/kserve/charts/kserve-crd:v0.20.0"                    # sha256:92deb742d22aaf295f4fd86d5c2595cbf08b14b6916760bfb16875b20761ee0d
-    - "oci://ghcr.io/kserve/charts/kserve-crd-minimal:v0.20.0"            # sha256:826cddcbe0bd50b6841356a36ca7fcdccecb531025d5d8b66719aa12166669fb
     - "oci://ghcr.io/kserve/charts/kserve-resources:v0.20.0"              # sha256:956c4860374fd83fc5702f23905e37a60c0470783356c2fe8b2e8363ca20572b
+  # charts_available: the rest of the v0.17+ split, published at v0.20.0 and
+  # confirmed resolvable, but not part of the phase 1 install list above.
+  # Kept here so a later phase does not have to re-discover the OCI refs or
+  # re-resolve the digests.
+  charts_available:
+    # Alternate to kserve-crd above, not an addition: `helm template` on both
+    # emits the identical six CRD names (clusterservingruntimes,
+    # clusterstoragecontainers, inferencegraphs, inferenceservices,
+    # servingruntimes, trainedmodels), confirmed 2026-08-19. Installing both
+    # as separate helm releases collides on resource ownership - this is why
+    # it is not in the install list.
+    - "oci://ghcr.io/kserve/charts/kserve-crd-minimal:v0.20.0"            # sha256:826cddcbe0bd50b6841356a36ca7fcdccecb531025d5d8b66719aa12166669fb
+    # ClusterServingRuntime definitions for KServe's built-in engines
+    # (tensorflow, mlserver, sklearn, xgboost, huggingface, ...). Not needed
+    # in phase 1: the engine here is the custom llamacpp-arm64 ServingRuntime
+    # (runtimes/llamacpp-arm64), not one of the built-ins this chart configures.
     - "oci://ghcr.io/kserve/charts/kserve-runtime-configs:v0.20.0"        # sha256:819b32f79de7d4aeac01c248f7048d9e42e776aa3660b2e72ffc2268d11c64f1
+    # LLMInferenceService CRD - the newer, multi-node/cache-aware-routing API.
+    # Phase 3 territory (docs/adr/0002 and the design spec both scope
+    # "KServe llmisvc" and cache-aware routing to phase 3); not installed here.
     - "oci://ghcr.io/kserve/charts/kserve-llmisvc-crd:v0.20.0"            # sha256:751c62bd15df1bdae62a3db6e1ef6fe769c1432d934c3a784d0e046e75ff732f
+    # Alternate to kserve-llmisvc-crd, same reasoning as the crd/crd-minimal
+    # pair above (same CRD names, not an addition). Phase 3, if ever.
     - "oci://ghcr.io/kserve/charts/kserve-llmisvc-crd-minimal:v0.20.0"    # sha256:c95d8319d7d0e7fd0c82d890608ce473364c284790054a3789e5bd64df356f83
+    # Controller resources for LLMInferenceService. Phase 3, alongside the
+    # llmisvc CRD above; unused while models are served as InferenceService.
     - "oci://ghcr.io/kserve/charts/kserve-llmisvc-resources:v0.20.0"      # sha256:cc3a85dca41224fc5a258c96d9a98eecb15d5de7523fc68af17828e09368454c
+    # LocalModelCache CRD: a node-local weight cache so repeated pods on the
+    # same node reuse a downloaded model instead of re-pulling it. Not needed
+    # for a single laptop-sized model in phase 1.
     - "oci://ghcr.io/kserve/charts/kserve-localmodel-crd:v0.20.0"         # sha256:d9df3e56624b15c78604cd097b3ec02806570be7e439b25cbbb0f707a0c8aea7
+    # Alternate to kserve-localmodel-crd, same reasoning (same CRD names, not
+    # an addition).
     - "oci://ghcr.io/kserve/charts/kserve-localmodel-crd-minimal:v0.20.0" # sha256:700c7fb39a22d47314e9998c43563b6b3d77eaf375dbf7ed194f9bfb4c716cbb
+    # Controller and node agent for the local model cache above. Unused while
+    # phase 1 runs a single model on a single-node kind cluster.
     - "oci://ghcr.io/kserve/charts/kserve-localmodel-resources:v0.20.0"   # sha256:854742bba1c8cbf8013d1f50750e707563a7d2c5358e36c3857dda36935a6686
 
 kuadrant:
