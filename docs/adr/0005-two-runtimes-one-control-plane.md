@@ -55,6 +55,15 @@ provide into an `llmstack:` namespace, and dashboards read only that namespace.
 Panels that cannot be filled locally state why, rather than showing an empty
 graph.
 
+A second cost, found while implementing and not anticipated when this decision was
+made (2026-08-19): llama.cpp emits **no traces at all**. Its server documentation
+mentions neither OTLP nor OpenTelemetry, so the engine contract's fourth item is
+unmet in phase 1. This was not a reason to reverse the decision — no arm64 engine
+option satisfies it either — but it was not a known cost when the decision was
+taken, and pretending otherwise would misrepresent the record. Its practical
+effect is that time to first token cannot be derived from spans in phase 1 and
+must be measured by a labelled client-side prober instead.
+
 A deeper consequence: cache-aware routing cannot be demonstrated in phase 1 at
 all. The endpoint picker learns cache state from ZMQ events emitted by vLLM pods,
 and llama.cpp does not emit them. That capability starts in phase 2.

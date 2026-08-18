@@ -119,7 +119,7 @@ central abstraction of the repository.
 | API | `GET /v1/models`; `POST /v1/chat/completions` with and without streaming; `POST /v1/completions` |
 | Health | Readiness turns true only after weights are loaded, not when the process starts |
 | Metrics | Prometheus format on `/metrics`, exposing at least: requests running, requests waiting, input tokens, output tokens |
-| Traces | Accepts an OTLP endpoint through environment variables |
+| Traces | Accepts an OTLP endpoint through environment variables. **Phase 2 onward only** — see below |
 
 llama.cpp and vLLM name their metrics differently. Rather than writing two sets
 of dashboards, Prometheus recording rules normalise both into one namespace:
@@ -137,6 +137,15 @@ recording-rules file.
 The exact upstream metric names are deliberately not written here. They will be
 read from a running `/metrics` endpoint of each engine during implementation and
 recorded in an ADR with the date they were read.
+
+Known gap, found during implementation (2026-08-19): **llama.cpp emits no traces
+at all.** Its server documentation contains no mention of OTLP, OpenTelemetry, or
+any equivalent, so the fourth contract item cannot be satisfied by the phase 1
+engine. The contract keeps the requirement, because vLLM does satisfy it and the
+contract describes what an engine must provide to be a full member of this stack.
+Phase 1 therefore runs with a trace pipeline that no engine feeds. Consequences are
+recorded in ADR 0005 and in `docs/UNVERIFIED.md`, and the practical effect on
+time-to-first-token measurement is handled in the plan's observability task.
 
 Known gap, by design: prefix cache hit rate and KV cache utilisation exist only
 in vLLM. The endpoint picker learns cache state from ZMQ events emitted by vLLM
@@ -157,6 +166,12 @@ built.
 
 Metrics are scraped from `/metrics` by Prometheus. Traces are pushed over OTLP
 to an OpenTelemetry Collector. These are two independent paths.
+
+In phase 1 the second path is installed but carries nothing, because llama.cpp
+emits no traces. The Collector is still deployed: it is where GenAI attribute
+naming lives, and phase 2 fills it by pointing vLLM's `--otlp-traces-endpoint` at
+it. A pipeline with no producer is honest infrastructure; a dashboard implying it
+has data would not be.
 
 OpenTelemetry GenAI semantic conventions are used but not hard-coded: attribute
 names live in the Collector configuration, because those conventions were still

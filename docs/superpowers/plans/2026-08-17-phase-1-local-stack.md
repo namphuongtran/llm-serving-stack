@@ -1757,8 +1757,15 @@ kubectl -n observability create configmap llm-serving-dashboard \
 
 Phase 1 acceptance criterion 5 in the spec requires Grafana to show TTFT p95. If step 1 showed no time-to-first-token histogram, that criterion cannot be met from engine metrics, and there are two honest routes. Pick one and record it in ADR 0006:
 
-1. **Preferred:** derive it from traces. The engine emits a span per request through the OTLP pipeline; add a `spanmetrics` connector to the Collector so a latency histogram lands in Prometheus, then record it as `llmstack:ttft_seconds`.
-2. **Fallback:** a small client-side prober CronJob that sends one streaming request each minute, measures the delay to the first `data:` chunk, and exposes it as a gauge. Label the panel "measured by prober, not by the engine", because a synthetic number must never look like a served one.
+1. **Not available in phase 1:** deriving it from traces. This was the preferred
+   route when the plan was written, but llama.cpp emits no spans — its server
+   documentation has no OTLP or OpenTelemetry support of any kind (checked
+   2026-08-19). There is nothing for a `spanmetrics` connector to consume. This
+   route returns in phase 2, where vLLM does emit traces.
+2. **The route for phase 1:** a small client-side prober CronJob that sends one
+   streaming request each minute, measures the delay to the first `data:` chunk,
+   and exposes it as a gauge. Label the panel "measured by prober, not by the
+   engine", because a synthetic number must never look like a served one.
 
 Do not skip this step and leave the panel empty. A missing signal that nobody decided about is how an observability stack becomes decoration.
 
