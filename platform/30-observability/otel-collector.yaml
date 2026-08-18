@@ -1,0 +1,48 @@
+# There is no trace producer in phase 1. llama.cpp's server documentation has
+# zero mentions of OTLP or OpenTelemetry (checked 2026-08-19, see
+# docs/adr/0005-two-runtimes-one-control-plane.md and
+# docs/adr/0006-metric-normalisation.md), so this pipeline's `otlp` receiver
+# has nothing sending it spans in this phase. It is still deployed, on
+# purpose: the GenAI attribute naming below is where phase 2's vLLM traces
+# will land, and that is one file to change rather than a pipeline to invent
+# from scratch once there is something to receive.
+#
+# Field names checked against the real chart with:
+#   helm show values open-telemetry/opentelemetry-collector --version 0.170.0
+# on 2026-08-19. `mode`, `fullnameOverride`, `resources`, and `config.*` all
+# exist at these paths. The `health_check` extension the chart's own defaults
+# mark "mandatory" and "should never be removed" is not repeated here: `config`
+# is deep-merged with the chart's default config, not a full replacement, and
+# this file does not touch `config.extensions` or `config.service.extensions`,
+# so the default health_check stays in place.
+mode: deployment
+fullnameOverride: otel-collector
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 512Mi }
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc: { endpoint: 0.0.0.0:4317 }
+        http: { endpoint: 0.0.0.0:4318 }
+  processors:
+    batch: {}
+    # GenAI semantic-convention attribute names are set here and nowhere else.
+    # They were still marked experimental in the OpenTelemetry GenAI semantic
+    # conventions as of March 2026, so a rename upstream is a one-file change,
+    # not a search-and-replace across every trace-emitting component.
+    attributes/genai:
+      actions:
+        - { key: gen_ai.system, value: llamacpp, action: upsert }
+        - { key: gen_ai.request.model, value: ornith-9b, action: upsert }
+  exporters:
+    # No trace backend in phase 1. debug logs whatever arrives, which today is
+    # nothing: this pipeline has zero producers until phase 2 adds vLLM.
+    debug: { verbosity: basic }
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [attributes/genai, batch]
+        exporters: [debug]

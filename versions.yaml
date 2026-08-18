@@ -27,6 +27,14 @@ charts:
   keda: "2.20.2"                       # kedacore/keda
   kube_prometheus_stack: "88.5.0"      # prometheus-community/kube-prometheus-stack
   otel_collector: "0.170.0"            # open-telemetry/opentelemetry-collector
+  # read 2026-08-19 via `helm repo add prometheus-community ...` (already added
+  # above) then `helm search repo prometheus-community/prometheus-pushgateway
+  # --versions | head -3`. Backs the TTFT prober CronJob in
+  # platform/30-observability/ttft-prober-cronjob.yaml: a CronJob pod exits
+  # seconds after each measurement, so there is no long-lived target for
+  # Prometheus to scrape a gauge from directly, and Pushgateway is the
+  # standard fix for that shape of job.
+  prometheus_pushgateway: "3.8.0"      # prometheus-community/prometheus-pushgateway
   argo_cd: "10.4.0"                    # argo/argo-cd
   kyverno: "3.8.2"                     # kyverno/kyverno
 

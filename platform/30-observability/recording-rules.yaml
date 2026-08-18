@@ -1,0 +1,60 @@
+# Normalises engine-specific series into an `llmstack:` namespace so one
+# dashboard (platform/30-observability/dashboards/llm-serving.json) reads the
+# same names regardless of which engine is behind the predictor. Adding vLLM
+# in phase 2 means adding a second expression per rule here; it changes no
+# dashboard.
+#
+# The left-hand `llamacpp:*` names are read from llama.cpp's own server
+# README at the exact git commit the pinned image (versions.yaml:
+# images.llamacpp_server) was built from -
+# 25ae3a9b331fffea50ff8d07a5cad34c33f1276f - fetched 2026-08-19 from:
+#   https://raw.githubusercontent.com/ggml-org/llama.cpp/25ae3a9b331fffea50ff8d07a5cad34c33f1276f/tools/server/README.md
+# This is documentation-derived, not read from a live /metrics endpoint: no
+# cluster exists in phase 1 authoring to run the confirming command against
+# (see docs/adr/0006-metric-normalisation.md, which records the full metric
+# list and this same command to run once a cluster exists). A rule whose
+# left-hand series does not exist produces silence, not an error, which is
+# the worst failure mode in observability - so every name below is quoted
+# from that README, none invented.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: llmstack-normalisation
+  namespace: observability
+  labels: { release: kube-prometheus-stack }
+spec:
+  groups:
+    - name: llmstack.normalisation
+      interval: 15s
+      rules:
+        # llamacpp:requests_processing - "Number of requests processing." (Gauge)
+        - record: llmstack:requests_running
+          expr: sum(llamacpp:requests_processing) or vector(0)
+        # llamacpp:requests_deferred - "Number of requests deferred." (Gauge)
+        - record: llmstack:requests_waiting
+          expr: sum(llamacpp:requests_deferred) or vector(0)
+        # llamacpp:tokens_predicted_total - "Number of generation tokens
+        # processed." (Counter)
+        - record: llmstack:tokens_out_total
+          expr: sum(llamacpp:tokens_predicted_total) or vector(0)
+
+        # Time-to-first-token has no engine-reported source in phase 1.
+        # llama.cpp's /metrics exposes only the counters and gauges named
+        # above (plus prompt/decode/speculative-decoding counters not needed
+        # here) - no latency histogram of any kind, so there is nothing a
+        # `histogram_quantile` could read. See ADR 0006's "panels this engine
+        # cannot fill" table.
+        #
+        # llm_ttft_probe_seconds is not an engine metric. It is the gauge
+        # platform/30-observability/ttft-prober-cronjob.yaml pushes to
+        # Pushgateway once a minute, measured client-side with curl's
+        # time_starttransfer against the same gateway path a real client
+        # uses. quantile_over_time turns the resulting series of single
+        # samples into a rolling percentile the way a histogram would.
+        # Deliberately no `or vector(0)`: an absent sample here means "no
+        # prober run has landed yet in this window", and reporting 0 seconds
+        # instead would misrepresent a synthetic gap as a real, fast answer.
+        - record: llmstack:ttft_seconds:p50
+          expr: quantile_over_time(0.5, llm_ttft_probe_seconds[15m])
+        - record: llmstack:ttft_seconds:p95
+          expr: quantile_over_time(0.95, llm_ttft_probe_seconds[15m])

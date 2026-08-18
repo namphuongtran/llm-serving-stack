@@ -1,0 +1,86 @@
+# Not in the original task brief's file list; added because Task 7's spec
+# acceptance criterion 5 requires Grafana to show TTFT p95, and llama.cpp has
+# no engine-side time-to-first-token metric to read (see recording-rules.yaml
+# and docs/adr/0006-metric-normalisation.md). This CronJob is the only source
+# for that panel in phase 1. It measures what a client outside the cluster
+# experiences - the same gateway path `llm.localtest.me` traffic takes - not
+# what the engine reports; the dashboard panel is labelled accordingly so a
+# synthetic number can never be mistaken for a served one.
+#
+# It runs inside the cluster, so it cannot use the `llm.localtest.me` name the
+# way host-machine tests do (that name resolves publicly to 127.0.0.1, which
+# from inside a pod's own network namespace is the pod itself, not the
+# gateway). Instead it targets the Gateway's own auto-provisioned Service
+# directly and sets the Host header the HTTPRoute matches on. That Service's
+# name, `llm-istio` in `istio-system`, is not invented: Istio's Gateway API
+# docs (https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/,
+# "Automated deployment" section, read 2026-08-19) state the auto-provisioned
+# Service and Deployment are named `<Gateway name>-<GatewayClass name>`, and
+# platform/10-istio/install.sh already patches a Service by that exact name.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ttft-prober
+  namespace: observability
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 45
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: prober
+              # Reuses the digest already pinned as images.curl in
+              # versions.yaml; no new image pin needed for a shell script that
+              # only needs curl.
+              image: curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  GATEWAY="http://llm-istio.istio-system.svc.cluster.local"
+
+                  # Same client-credentials grant as get_token() in
+                  # tests/lib/helpers.bash. llm-tier-pro's secret is the
+                  # dev-only "devsecret" value already committed in
+                  # platform/15-keycloak/realm-export.json - this CronJob runs
+                  # only against the local kind cluster this repo builds.
+                  # This request is harmless before Task 8's AuthPolicy exists
+                  # (Keycloak itself is already installed by Task 4) and
+                  # required after it, so the same script is correct in both
+                  # states of this repository.
+                  TOKEN_JSON=$(curl -sf -H "Host: llm.localtest.me" -X POST \
+                    "$GATEWAY/realms/llm/protocol/openid-connect/token" \
+                    -d grant_type=client_credentials \
+                    -d client_id=llm-tier-pro \
+                    -d client_secret=devsecret)
+                  TOKEN=$(printf '%s' "$TOKEN_JSON" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+                  if [ -z "$TOKEN" ]; then
+                    echo "ttft-prober: no access_token in response: $TOKEN_JSON" >&2
+                    exit 1
+                  fi
+
+                  # curl's own time_starttransfer is the seconds from request
+                  # start to the first byte of the response body. For a
+                  # streaming SSE response with nothing buffering in front of
+                  # it, that first byte is the first `data:` chunk, so this is
+                  # TTFT without hand-parsing the stream.
+                  TTFT=$(curl -s -o /dev/null -w '%{time_starttransfer}' \
+                    -H "Host: llm.localtest.me" \
+                    -H "authorization: Bearer $TOKEN" \
+                    -H 'content-type: application/json' \
+                    -d '{"model":"ornith-9b","messages":[{"role":"user","content":"ping"}],"max_tokens":8,"stream":true}' \
+                    "$GATEWAY/v1/chat/completions")
+
+                  echo "ttft-prober: ${TTFT}s"
+                  printf '# TYPE llm_ttft_probe_seconds gauge\nllm_ttft_probe_seconds %s\n' "$TTFT" \
+                    | curl -sf --data-binary @- "http://pushgateway.observability.svc:9091/metrics/job/ttft-prober"
+              resources:
+                requests: { cpu: 10m, memory: 16Mi }
+                limits: { cpu: 100m, memory: 32Mi }

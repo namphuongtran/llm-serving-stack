@@ -1,0 +1,29 @@
+# Small on purpose: this runs beside a 6 GB model on a laptop.
+#
+# Every key below was checked against the real chart with:
+#   helm show values prometheus-community/kube-prometheus-stack --version 88.5.0
+# on 2026-08-19. `prometheus.prometheusSpec.retention`, `.scrapeInterval`,
+# `.resources`, `.podMonitorSelectorNilUsesHelmValues`, and
+# `.ruleSelectorNilUsesHelmValues` all exist at those paths; so do
+# `grafana.adminPassword` and `grafana.sidecar.dashboards.{enabled,label}`;
+# so does `alertmanager.enabled`.
+prometheus:
+  prometheusSpec:
+    retention: 12h
+    scrapeInterval: 15s
+    resources:
+      requests: { cpu: 100m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1500Mi }
+    # Both default to true in the chart, which restricts selection to
+    # PodMonitors/PrometheusRules carrying a release label the chart injects.
+    # False here means "select everything in every namespace", which is what
+    # lets platform/30-observability/install.sh apply a bare PodMonitor and
+    # PrometheusRule with no such label and still have them picked up.
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+grafana:
+  adminPassword: admin
+  sidecar:
+    dashboards: { enabled: true, label: grafana_dashboard }
+alertmanager:
+  enabled: false

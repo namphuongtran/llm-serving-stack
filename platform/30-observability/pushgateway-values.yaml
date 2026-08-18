@@ -1,0 +1,35 @@
+# Not in the original task brief's file list. Added because the TTFT prober
+# (ttft-prober-cronjob.yaml) is a CronJob: its pod exits seconds after each
+# measurement, so there is no long-lived target for Prometheus to scrape a
+# gauge from directly. Pushgateway is the standard fix for exactly this
+# shape of job (a batch job publishing one value), and this repository does
+# not need to invent an alternative.
+#
+# Field names checked against the real chart with:
+#   helm show values prometheus-community/prometheus-pushgateway --version 3.8.0
+# on 2026-08-19. `fullnameOverride`, `resources`, `persistentVolume.enabled`,
+# and `serviceMonitor.{enabled,namespace,additionalLabels,honorLabels}` all
+# exist at these paths. With `fullnameOverride: pushgateway`, `helm template`
+# renders a Service literally named `pushgateway`, port 9091 - confirmed by
+# rendering the chart locally on 2026-08-19; that name is what
+# ttft-prober-cronjob.yaml and recording-rules.yaml assume.
+fullnameOverride: pushgateway
+resources:
+  requests: { cpu: 25m, memory: 32Mi }
+  limits: { cpu: 100m, memory: 64Mi }
+persistentVolume:
+  # The gauge is overwritten every minute; there is nothing here worth
+  # surviving a pod restart. Falls back to emptyDir.
+  enabled: false
+serviceMonitor:
+  enabled: true
+  namespace: observability
+  # values-prometheus.yaml turns off the podMonitor/rule selector's default
+  # release-label restriction, but leaves serviceMonitorSelectorNilUsesHelmValues
+  # at the kube-prometheus-stack chart's own default of true, which means the
+  # Prometheus Operator only picks up ServiceMonitors carrying this label.
+  additionalLabels: { release: kube-prometheus-stack }
+  # Keep the `job`/`instance` labels the CronJob pushes (job=ttft-prober)
+  # rather than letting the scrape overwrite them with Pushgateway's own pod
+  # identity - that label is what the recording rule's series is named after.
+  honorLabels: true
