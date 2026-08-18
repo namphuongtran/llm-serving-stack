@@ -21,3 +21,15 @@ wait_for() {
 require_arm64() {
   docker buildx imagetools inspect "$1" 2>/dev/null | grep -q 'linux/arm64'
 }
+
+# get_token <client-id> — client credentials grant, prints the access token.
+# The client secret is read from the environment, never from git.
+get_token() {
+  local client="$1"
+  local secret_var="KC_SECRET_${client//-/_}"
+  local secret="${!secret_var:-devsecret}"
+  curl -sf -X POST "http://${API_HOST}/realms/llm/protocol/openid-connect/token" \
+    -d grant_type=client_credentials \
+    -d "client_id=${client}" \
+    -d "client_secret=${secret}" | jq -r .access_token
+}
