@@ -5,7 +5,15 @@ meta:
   machine: "Apple M4, arm64, 32 GB"
 
 kubernetes:
-  kind_node: ""          # e.g. kindest/node:v1.33.1 — pin by digest in step 6/10 (cluster not created yet)
+  # read 2026-08-19: no cluster was created (machine cannot spare the memory
+  # Docker needs), so this is not the image a running cluster reported. It is
+  # the default node image kind v0.32.0 (the version installed on this
+  # machine, confirmed with `kind --version`) pins in its own release notes:
+  #   https://github.com/kubernetes-sigs/kind/releases/tag/v0.32.0
+  #   "The default node image is now
+  #    kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+  # v1.36.1 is above the min_server floor of 1.32 below.
+  kind_node: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
   min_server: "1.32"     # floor named by Envoy AI Gateway prerequisites; we exceed it
 
 charts:
