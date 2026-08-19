@@ -209,7 +209,7 @@ reproduced.
 | Rolling update | Long `terminationGracePeriodSeconds`, `preStop` delay | Streaming responses last tens of seconds and must not be cut mid-answer |
 | Overload | Engine concurrency limit, 429 from the rate limit policy | Refuse early rather than degrade everything |
 | Slow response | Raised HTTPRoute timeouts | Default gateway timeouts are too short for streaming |
-| Engine unavailable | Failover route to a smaller model | A weaker answer beats no answer |
+| Engine unavailable | **Deferred, see ADR 0007.** Core Gateway API has no failover primitive: `HTTPRoute` does weighted splitting only, and Envoy never retries into a different weighted cluster. Delivering this needs an Envoy aggregate cluster via `EnvoyFilter`, outside Gateway API | A weaker answer would beat no answer, but phase 1 does not provide one |
 | Namespace lost | Argo CD re-syncs from git | Recovery time is dominated by model download, not by applying YAML |
 
 Recovery is exercised, not assumed: a single task deletes the namespace, lets
