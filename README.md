@@ -4,8 +4,22 @@ A production-shaped LLM inference platform on Kubernetes, built to be understood
 layer by layer. It runs on a local Apple Silicon Mac first, then on GPU nodes,
 without changing the control plane or the repository shape.
 
-Status: **scaffolding**. Directories and decisions are in place. Manifests are
-not written yet.
+Status: **code-complete, unrun** (checked 2026-08-19). Every manifest, script,
+test, and policy for phase 1 is written and statically checked - `helm
+install --dry-run=client`, `kustomize build`, CRD schemas read from the
+pinned charts themselves, `bash -n` under bash 3.2.57, `bats --count`,
+`actionlint`, and the real `kyverno` CLI. None of it has been observed
+working against a live Kubernetes cluster: the machine building it cannot
+spare the memory Docker needs to run `kind` alongside the rest of this stack.
+
+**None of the nine phase 1 acceptance criteria (design spec, section 15) hold
+as of 2026-08-19, because none has been executed.** This is not nine
+different failures; it is one fact (no cluster has run) with nine
+consequences. See [`docs/UNVERIFIED.md`](docs/UNVERIFIED.md) for the full,
+reconciled account of what is unproven, what is unverified by construction,
+and the one place this repository has a specific technical reason to doubt a
+mechanism rather than merely lack a measurement of it (cross-backend
+failover, `docs/adr/0007-failover-not-expressible-in-gateway-api.md`).
 
 ## What this is
 
@@ -82,5 +96,37 @@ policy/        admission policies, shared by CI and cluster
 
 ## Getting started
 
-Not yet. `Taskfile.yml` lists the intended entry points; they are stubs while the
-scaffolding is in place.
+**Untried (2026-08-19): the commands below have never been run against a real
+cluster.** They are what the manifests and scripts say should happen, not a
+report of what was observed. Do not read the presence of these instructions
+as a claim that they work; see `docs/UNVERIFIED.md`.
+
+Prerequisites: `kubectl`, `helm`, `kind`, `task`, `yq`, `jq`, `bats`,
+`kustomize`, and Docker Desktop with at least 8 CPUs and 20 GiB of memory
+allocated (`task preflight` checks all of this and fails with a specific
+message if something is missing).
+
+```bash
+task preflight        # verify tools and Docker resources
+task local:up         # kind cluster -> Argo CD -> every platform layer, in sync-wave order
+task test:smoke       # tests/smoke: identity, quota, autoscaling, availability, gitops, policy...
+task test:contract    # tests/contract: the engine contract, so engines stay swappable
+task token            # obtain a JWT from Keycloak
+task chat             # send one streaming chat completion
+task bench            # run every benchmark scenario, write a dated result directory
+task drill:recovery   # delete the llm namespace, let Argo CD rebuild it, measure recovery time
+task local:down       # delete the cluster
+```
+
+`task local:up` is the single entry point Task 12 built: it creates the
+`kind` cluster, installs Argo CD (the only imperative step), and applies
+`clusters/local-kind/root-app.yaml`, which brings in every other layer as an
+Argo CD Application. Reproducing the whole stack from an empty machine is
+exactly `task local:down && task local:up && bats tests/` - the acceptance
+test for the whole repository, and itself one of the entries in
+`docs/UNVERIFIED.md`.
+
+`task token`, `task chat`, `task local:status`, and `task drill:drain` remain
+stubs (`task --list-all` shows every task; a stub prints what it would do
+rather than doing it). Everything else above runs a real command even though
+none has been run against a live cluster yet.

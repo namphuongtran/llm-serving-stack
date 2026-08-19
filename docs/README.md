@@ -1,6 +1,6 @@
 # Documentation
 
-Three kinds of document, with different jobs.
+Four kinds of document, with different jobs.
 
 ## Why each layer exists
 
@@ -36,3 +36,11 @@ ADR supersedes the old one and the old one stays.
 
 [`superpowers/specs/`](superpowers/specs/) holds the design this repository
 implements, including the evidence log with the date each fact was verified.
+
+## What has not run yet
+
+[`UNVERIFIED.md`](UNVERIFIED.md) is the one place that states plainly what is
+unproven, what is unverified by construction, and what is doubted on
+technical grounds rather than merely unmeasured. Every other document above
+can name a gap in its own layer; this one is the reconciled account across
+all of them.

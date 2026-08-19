@@ -106,7 +106,7 @@ tasks:
   drill:recovery:
     desc: Delete the namespace, let Argo CD rebuild, measure time to first token
     cmds:
-      - echo "TODO - destructive drill; records the real recovery time objective"
+      - ./bench/recovery-drill.sh
 
   drill:drain:
     desc: Drain a node and assert the service stays available
