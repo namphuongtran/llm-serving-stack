@@ -1,0 +1,9 @@
+{
+  "name": "shared-prefix",
+  "question": "How much does a repeated prompt prefix help, and how much more will cache-aware routing add in phase 3?",
+  "prompt_tokens": 4000,
+  "shared_prefix_tokens": 3500,
+  "max_tokens": 64,
+  "num_prompts": 24,
+  "concurrency": 4
+}

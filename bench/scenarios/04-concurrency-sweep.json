@@ -1,0 +1,8 @@
+{
+  "name": "concurrency-sweep",
+  "question": "Where does throughput stop improving and latency start degrading?",
+  "prompt_tokens": 256,
+  "max_tokens": 128,
+  "num_prompts": 64,
+  "concurrency_levels": [1, 4, 16, 64]
+}

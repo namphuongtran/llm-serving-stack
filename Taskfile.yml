@@ -84,9 +84,9 @@ tasks:
   # --- measurement ---------------------------------------------------------
 
   bench:
-    desc: Run the benchmark scenarios and write a dated result directory
+    desc: Run every scenario and write a dated result directory
     cmds:
-      - echo "TODO: benchmark_serving over bench/scenarios, write bench/results/<date>-<machine>"
+      - ./bench/run.sh
 
   drill:recovery:
     desc: Delete the namespace, let Argo CD rebuild, measure time to first token

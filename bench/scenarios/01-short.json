@@ -1,0 +1,8 @@
+{
+  "name": "short-prompt-short-output",
+  "question": "How responsive is a small interactive request?",
+  "prompt_tokens": 32,
+  "max_tokens": 64,
+  "num_prompts": 40,
+  "concurrency": 4
+}
