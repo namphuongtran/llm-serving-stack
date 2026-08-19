@@ -69,8 +69,32 @@
 # The same file, line 1470, says the `local` storage backend is "only supported
 # in the monolithic mode", and monolithic is what this is.
 #
-# > **Untried (2026-08-19):** every claim below about Tempo's runtime
-# > behaviour. No cluster has run this.
+# SETTLED 2026-08-19, later the same day. This block said "Untried: every claim
+# below about Tempo's runtime behaviour. No cluster has run this." A cluster has
+# now run it. On a 3-node kind cluster, after
+# `platform/30-observability/install.sh`:
+#
+#   kubectl -n observability logs deploy/tempo | head -1
+#     level=info caller=main.go:107 msg="Starting Tempo"
+#     version="(version=v3.0.3, branch=HEAD, revision=1900ed7bb)" target=all
+#
+# `target=all` is monolithic mode, which is what the config below assumes.
+# `readyReplicas` reached 1 of 1, so the /ready probe answered. No unmarshal
+# error, no unknown-field error, and no config error of any kind appeared in the
+# log - the whole config parsed.
+#
+# The two blocks this file gained in the 2.x -> 3.0 rewrite are not merely
+# accepted, they are ACTIVE. The log carries repeated
+#   caller=backendworker.go:529 msg="error calling scheduler"
+#   err="rpc error: code = NotFound desc = no jobs found"
+# which is the backend worker polling the backend scheduler for compaction work
+# and finding none, because this Tempo holds no blocks yet. It is logged at
+# level=error and is benign; what it proves is that both `backend_worker` and
+# `backend_scheduler` below were read and wired to each other.
+#
+# > **Untried (2026-08-19):** that a span ever arrives. Tempo starting is not
+# > Tempo receiving. Settle that with the "spans are reaching tempo" test in
+# > tests/smoke/05-observability.bats, which needs the model layer up first.
 # >
 # > The config keys are not invented, and where they come from changed with the
 # > version bump. They are now read out of Tempo's own examples at tag v3.0.3,

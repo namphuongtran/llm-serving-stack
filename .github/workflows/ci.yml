@@ -110,6 +110,24 @@ jobs:
         uses: helm/kind-action@v1
         with:
           config: prereqs/kind-cluster.yaml
+          # cluster_name is NOT optional here, and leaving it off broke every
+          # suite in this job. helm/kind-action@v1 defaults cluster_name to
+          # "chart-testing" (action.yml, `default: "chart-testing"`), and its
+          # kind.sh always passes the flag:
+          #   args=(create cluster "--name=${cluster_name}" ...)
+          # `kind create cluster --help` says --name "overrides
+          # KIND_CLUSTER_NAME, config", so the flag beats the `name:` field in
+          # prereqs/kind-cluster.yaml. CI therefore built kind-chart-testing
+          # while tests/lib/helpers.bash hardcodes
+          # KUBECTL_CONTEXT=kind-llm-serving-stack.
+          #
+          # The install steps below would still have passed, because they use
+          # bare kubectl on the current context. Every bats suite would then
+          # die at its first k() call. The local path never saw this: taskfile
+          # `local:cluster` runs `kind create cluster --config` with no --name,
+          # so it honours the config file. Read from the action source on
+          # 2026-08-19.
+          cluster_name: llm-serving-stack
       - name: Install tools
         # kind-action installs kind and kubectl (its own job); it installs
         # neither helm nor yq nor kustomize, and every platform/*/install.sh
@@ -227,6 +245,24 @@ jobs:
         uses: helm/kind-action@v1
         with:
           config: prereqs/kind-cluster.yaml
+          # cluster_name is NOT optional here, and leaving it off broke every
+          # suite in this job. helm/kind-action@v1 defaults cluster_name to
+          # "chart-testing" (action.yml, `default: "chart-testing"`), and its
+          # kind.sh always passes the flag:
+          #   args=(create cluster "--name=${cluster_name}" ...)
+          # `kind create cluster --help` says --name "overrides
+          # KIND_CLUSTER_NAME, config", so the flag beats the `name:` field in
+          # prereqs/kind-cluster.yaml. CI therefore built kind-chart-testing
+          # while tests/lib/helpers.bash hardcodes
+          # KUBECTL_CONTEXT=kind-llm-serving-stack.
+          #
+          # The install steps below would still have passed, because they use
+          # bare kubectl on the current context. Every bats suite would then
+          # die at its first k() call. The local path never saw this: taskfile
+          # `local:cluster` runs `kind create cluster --config` with no --name,
+          # so it honours the config file. Read from the action source on
+          # 2026-08-19.
+          cluster_name: llm-serving-stack
       - name: Install tools
         run: |
           set -euo pipefail

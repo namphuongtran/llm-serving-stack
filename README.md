@@ -138,17 +138,31 @@ Every owed number is marked at the place it belongs, not in a central list, so
 it cannot drift away from the claim it qualifies. Find them all with:
 
 ```
-grep -rn '\*\*Unmeasured (20' . --exclude-dir=.git --exclude-dir=docs/superpowers
+git ls-files -z | xargs -0 grep -n '\*\*Unmeasured (20'
 ```
 
-which returned **14** on 2026-08-19, across 11 files. Each marker names the
+which returned **15** on 2026-08-19, across 12 files. Each marker names the
 command that settles it.
+
+It returned 14 earlier the same day. The twelfth file is
+`docs/deployment-walkthrough.md`, and its marker owes the one number the
+walkthrough could not produce: what the model layer costs, because that layer
+does not start yet.
+
+The command counts tracked files, and that is the point. It used to be
+`grep -rn ... --exclude-dir=.git --exclude-dir=docs/superpowers`, which did not
+work: `--exclude-dir` matches a directory's basename, never a path, so
+`docs/superpowers` excluded nothing. That form also missed `.superpowers/` and
+`docs/UNVERIFIED.md`, both ignored by `.gitignore`. Run verbatim on 2026-08-19
+it returned 52 rather than 14. The published number was always the tracked-file
+number; only the command was wrong. A fresh clone hides this, because a clone
+has none of those three paths.
 
 `Untried` is the companion marker, for a mechanism nobody has exercised rather
 than a number nobody has measured. Find those with:
 
 ```
-grep -rnE 'Untried \(20[0-9]{2}-' . --exclude-dir=.git --exclude-dir=docs/superpowers
+git ls-files -z | xargs -0 grep -nE 'Untried \(20[0-9]{2}-'
 ```
 
 which returned **11** on 2026-08-19, across seven files: this one,
@@ -165,10 +179,30 @@ The count rising is the expected shape of this work, not a regression. Every
 component added since 2026-08-19 has been written and never run, so each one
 brings its own marker naming the command that would settle it.
 
-The date digits in that pattern are not decoration. Without them the command
-matches the line that documents it, and reports 7. The `Unmeasured` pattern
-above dodges the same trap a different way, by requiring the `**` a real marker
-carries.
+A third marker form was introduced and retired on the same day, 2026-08-19, when
+the stack was first run layer by layer on a real cluster:
+
+```
+git ls-files -z | xargs -0 grep -n '\*\*BLOCKED (20'
+```
+
+which returns **0**. `BLOCKED` is for something that was tried, failed, and is
+understood: it carries the exact error and the upstream source lines that explain
+it. It is deliberately not `Untried`, because trying it is what produced the
+finding. The one instance was the model layer, and it lasted a few hours;
+`models/ornith-9b/overlays/local/patch-resources.yaml` now carries the resolved
+record instead. Keep the form available: it is the honest marker for a finding
+that is understood but not yet fixed.
+
+The date digits in that pattern are not decoration. Without them the pattern
+matches the line that documents the marker form, `CLAUDE.md:176`, so it reports
+12 instead of 11. The `Unmeasured` pattern above dodges the same trap a
+different way, by requiring the `**` a real marker carries.
+
+This paragraph said "reports 7" until 2026-08-19. That number was never
+producible: dropping the digits can only ADD matches, so a number below 11 was
+wrong in direction as well as in size. Re-measured by diffing the two greps over
+tracked files, which shows exactly one added line.
 
 Two details in that pattern are deliberate, and both were found by running it
 rather than by reasoning about it. It matches the marker form `**Unmeasured (`

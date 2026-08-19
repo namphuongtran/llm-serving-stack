@@ -66,6 +66,18 @@ spec:
                   # platform/20-kserve/values-kserve.yaml cannot drift.
                   kserveGateway: istio-system/llm
                   gateway: istio-system/llm
+            # The model agent image, pinned by digest. Copied from
+            # platform/20-kserve/values-kserve.yaml on 2026-08-19, which carries
+            # the full reasoning: KServe injects this container for any
+            # InferenceService with no storageUri, the chart leaves its tag
+            # empty, and the resulting floating tag was rejected at admission by
+            # this repository's own disallow-floating-tags policy.
+            #
+            # Changing the digest means changing it in both places. Grep for the
+            # old one.
+            agent:
+              image: kserve/agent
+              tag: "v0.20.0@sha256:17db4be84440fc92e27dc3e7cac706514ff555ba6fd942424f4d219e2c58930e"
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     syncOptions: [CreateNamespace=true]

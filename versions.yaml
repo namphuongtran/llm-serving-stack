@@ -26,8 +26,16 @@ charts:
   # first entry whose `.name` matches exactly (the plain `helm search` output
   # also matches substrings, so `istio/base` alone would pull in other charts).
   # Not deprecated: `helm show chart <repo>/<chart> --version <v>` and reading
-  # `deprecated` out of the printed Chart.yaml - all nine charts checked this
-  # way returned false or omitted the key.
+  # `deprecated` out of the printed Chart.yaml. Twelve charts were checked this
+  # way and every one returned false: the eleven keys in this block, plus
+  # `kuadrant.operator_chart` further down. Counted with
+  # `yq -r '.charts | keys | length'`, which prints 11.
+  #
+  # An earlier version of this comment said "all nine charts". That was the
+  # number of `helm show chart` calls made, not the number of charts in the
+  # file: istio_istiod, istio_cni, and istio_ztunnel share a version with
+  # istio_base and had been skipped. The three were checked on 2026-08-19 after
+  # the miscount was found, and all three returned false too.
   #
   # The one deprecation this repository did hit is Grafana's. The charts under
   # https://grafana.github.io/helm-charts are deprecated and superseded by
@@ -210,14 +218,30 @@ images:
   # manifest digest, confirmed present in the same inspect output.
   #
   # server-b10481 is not a stale pin, it is the newest server image published.
-  # Checked 2026-08-19 by requesting the manifest for every tag from
-  # server-b10482 to server-b10490 against ghcr.io - all nine return HTTP 404,
-  # while server-b10481 returns 200. llama.cpp tags b10485 to b10488 exist as
-  # GitHub releases with no container image behind them.
+  # Checked 2026-08-19 by requesting the manifest for each of the nine tags
+  # server-b10482, -83, -84, -85, -86, -87, -89, and -90 (and -88) against
+  # ghcr.io. All nine return HTTP 404; server-b10481 returns 200.
+  #
+  # Four of those nine tags do not exist upstream either, so their 404 says
+  # nothing. `git ls-remote --tags https://github.com/ggml-org/llama.cpp.git
+  # 'refs/tags/b1048*'` on 2026-08-19 returns exactly b10481, b10483, b10485,
+  # b10486, and b10488. So the real finding is narrower than it first looked:
+  # b10483, b10485, b10486, and b10488 are released upstream with no container
+  # image behind them. An earlier version of this comment wrote the range
+  # "b10485 to b10488", which implies a b10487 that was never tagged.
   llamacpp_server: "ghcr.io/ggml-org/llama.cpp:server-b10481@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b"
   # Was 26.7.1 earlier on 2026-08-19. Bumped the same day because 26.7.2 is a
-  # security release: its GitHub release notes list CVE-2026-14613 (fine-grained
-  # admin permission bypass), CVE-2026-45292, CVE-2026-59888, and CVE-2026-59889.
+  # security release. Its release page names EIGHT distinct CVEs, counted with
+  #   curl -sL https://github.com/keycloak/keycloak/releases/tag/26.7.2 \
+  #     | grep -oE 'CVE-[0-9]{4}-[0-9]+' | sort -u
+  # on 2026-08-19: CVE-2026-14613 (fine-grained admin permission bypass),
+  # CVE-2026-15571, CVE-2026-15945, CVE-2026-17048, CVE-2026-18963,
+  # CVE-2026-45292, CVE-2026-59888, and CVE-2026-59889.
+  #
+  # An earlier version of this comment named only the first four and attributed
+  # that list to the release notes. Four was how many fitted in the first 900
+  # bytes of the release body that had been read, not how many the notes list.
+  # A total nobody counted is exactly what this repository forbids.
   #
   # read 2026-08-19 over HTTPS against quay.io, no Docker daemon: fetched the
   # index for tag 26.7.2, took the linux/arm64 child, then read that child's
@@ -261,6 +285,22 @@ images:
   # does, or admission rejects it and the test fails 120 seconds later at a
   # curl loop with no stated cause.
   echo_server: "ealen/echo-server:0.9.2@sha256:74afa5ffd1f0cd81bea9a3ef2f27341dc7e93ed221f2817a2119c230c25cc8a2"
+  # KServe's model agent. NOT installed as a workload by anything here: KServe
+  # injects it into the predictor pod whenever it infers multi-model serving,
+  # which it does for any InferenceService with no storageUri. Discovered on
+  # 2026-08-19, when the pod was rejected by this repository's own
+  # policy/disallow-floating-tags.yaml because the chart renders the agent image
+  # with an empty tag, giving the floating `kserve/agent:v0.20.0`.
+  #
+  # read 2026-08-19 over HTTPS against Docker Hub, no daemon: fetched the index
+  # for tag v0.20.0, took the linux/arm64 child, then read that child's config
+  # blob and confirmed `os: linux`, `architecture: arm64`.
+  #
+  # TWO rendered copies carry this, and both must change together:
+  # platform/20-kserve/values-kserve.yaml and
+  # clusters/local-kind/apps/20-kserve.yaml. In both it is written as the chart's
+  # `tag` value, because the chart concatenates image and tag.
+  kserve_agent: "kserve/agent:v0.20.0@sha256:17db4be84440fc92e27dc3e7cac706514ff555ba6fd942424f4d219e2c58930e"
   # read 2026-08-19 over HTTPS against Docker Hub, no daemon: fetched the
   # index for tag 3.0.3, took the linux/arm64 child, then read that child's
   # config blob and confirmed `os: linux`, `architecture: arm64`. The same

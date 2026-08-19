@@ -31,16 +31,114 @@ spec:
         labelSelector:
           matchLabels:
             serving.kserve.io/inferenceservice: ornith-9b
-    containers:
-      - name: kserve-container
-        lifecycle:
-          preStop:
-            exec:
-              # Let the gateway notice the endpoint is going away before the
-              # process stops accepting the stream it is already writing.
-              command: ["/bin/sleep", "15"]
-        volumeMounts:
-          - { name: models, mountPath: /mnt/models }
+    # Overrides go under `model:`, NOT in a `containers:` entry named
+    # kserve-container. This is not a style preference, it is what KServe
+    # v0.20.0's admission webhook requires.
+    #
+    # Found on 2026-08-19, on the first real run of this overlay against a live
+    # cluster. `kustomize build ... | kubectl apply -f -` was rejected with:
+    #   admission webhook "inferenceservice.kserve-webhook-server.validator"
+    #   denied the request: exactly one of [Name, SKLearn, XGBoost, Tensorflow,
+    #   PyTorch, Triton, ONNX, HuggingFace, PMML, LightGBM, Paddle, Model,
+    #   StorageUris, StorageContainerName, WorkerSpec, PodSpec] must be
+    #   specified in PredictorSpec
+    #
+    # The reason is in pkg/apis/serving/v1beta1/predictor.go at tag v0.20.0.
+    # GetImplementations() collects the non-nil framework specs (which includes
+    # s.Model), and THEN:
+    #   if len(s.Containers) != 0 {
+    #     for _, container := range s.Containers {
+    #       if container.Name == constants.InferenceServiceContainerName {
+    #         implementations = append(implementations, NewCustomPredictor(&s.PodSpec))
+    # So `model:` plus a container named kserve-container is TWO
+    # implementations, and the webhook demands exactly one. Note that only
+    # `Containers` is counted this way: `initContainers` and `volumes` below are
+    # not, which is why they stay at the predictor level.
+    #
+    # `model:` is the right home because PredictorExtensionSpec inlines
+    # corev1.Container, with the upstream comment "Container enables overrides
+    # for the predictor. Each framework will have different defaults that are
+    # populated in the underlying container spec." So lifecycle and volumeMounts
+    # are exactly what that field is for.
+    #
+    # Every overlay in this directory that renders an InferenceService had the
+    # same defect, and every one was rejected. `kustomize build` rendered all of
+    # them without complaint, and `task lint` passed, because rendering is not
+    # admission - which is this repository's own stated rule.
+    #
+    # > **RESOLVED (2026-08-19), and it took three fixes, not one. Recorded in
+    # > order because each one was only visible after the previous one landed.**
+    # >
+    # > FIRST: moving the override here was necessary but not sufficient. With it
+    # > moved, admission passed and the Deployment was created, then pod creation
+    # > failed:
+    # >   spec.containers[0].volumeMounts[2].mountPath: Invalid value:
+    # >   "/mnt/models": must be unique
+    # > The chain, all read at tag v0.20.0:
+    # >   1. utils/utils.go:58 IsMMSPredictor returns, when predictor.Containers
+    # >      is EMPTY, `!hasStorageUri && !hasStorageSpec && !hasStorageUris`.
+    # >      This overlay sets none of the three, deliberately, so multi-model
+    # >      serving is inferred. The cluster confirmed that reading by creating
+    # >      ConfigMaps modelconfig-ornith-9b-0 and modelconfig-fallback-small-0.
+    # >   2. components/component.go:92 addAgentAnnotations then sets
+    # >      internal.serving.kserve.io/agent=true and modelDir=/mnt/models.
+    # >   3. webhook/admission/pod/agent_injector.go:514 mountModelDir mounts a
+    # >      volume named "model-dir" (constants.go:528) at constants.ModelDir
+    # >      (= /mnt/models) onto kserve-container, via mountVolumeToContainer,
+    # >      which APPENDS with no duplicate check (same file, line 557).
+    # >   4. The ServingRuntime already mounted our "models" volume there.
+    # > The two failure modes are mutually exclusive, which is why this was a
+    # > design decision and not a typo:
+    # >   with `containers:`     -> webhook rejects, "exactly one implementation"
+    # >   without `containers:`  -> agent appends a duplicate mount
+    # > Adding a storageUri to escape MMS does not help on its own either: the
+    # > storage-initializer then injects its own /mnt/models mount.
+    # >
+    # > FIX 1, chosen from the three options in docs/deployment-walkthrough.md:
+    # > move OUR volume off /mnt/models entirely. It is now /models here, in
+    # > fallback.yaml, in the ci overlay, and in the ServingRuntime's --model
+    # > argument. KServe's agent keeps /mnt/models to itself and nothing
+    # > collides. Accepted cost: the agent sidecar is injected and does nothing,
+    # > requesting 100Mi.
+    # >
+    # > SECOND, revealed by fix 1: the pod was then rejected by THIS
+    # > repository's own policy.
+    # >   admission webhook "validate.kyverno.svc-fail" denied the request:
+    # >   disallow-floating-tags: require-digest-or-fixed-tag: ... failed at path
+    # >   /spec/containers/1/image/
+    # > containers[1] is that injected agent, and the chart renders its image
+    # > with an empty tag, giving the floating `kserve/agent:v0.20.0`. The policy
+    # > worked exactly as designed. FIX 2 pins it by digest in both copies of the
+    # > KServe values; see versions.yaml images.kserve_agent.
+    # >
+    # > THIRD, revealed by fix 2, and the one still NOT in this repository:
+    # > every authenticated request returned 401 with a valid token, because
+    # > Authorino could not fetch the issuer's discovery document. Its own log:
+    # >   issuerUrl "http://llm.localtest.me/realms/llm"
+    # >   error: dial tcp [::1]:80: connect: connection refused
+    # >   -> UNAUTHENTICATED, "missing openid connect configuration"
+    # > llm.localtest.me is a public name resolving to 127.0.0.1, so inside the
+    # > pod it means the pod. FIX 3 was a CoreDNS rewrite on the live cluster:
+    # >   rewrite name llm.localtest.me llm-istio.istio-system.svc.cluster.local
+    # > After it, discovery returned 200 from inside the cluster and the issuer
+    # > string matched the token's `iss` exactly.
+    # >
+    # > **That third fix is a live-cluster change with no home in git yet.** Until
+    # > it has one, a fresh `task local:up` reproduces the 401. It is the single
+    # > largest gap left, and docs/deployment-walkthrough.md records it.
+    # >
+    # > END STATE, observed 2026-08-19 15:26 UTC: no token -> 401; valid JWT ->
+    # > 200; a streaming chat completion returned 43 SSE data chunks; both
+    # > InferenceServices report Ready=True.
+    model:
+      lifecycle:
+        preStop:
+          exec:
+            # Let the gateway notice the endpoint is going away before the
+            # process stops accepting the stream it is already writing.
+            command: ["/bin/sleep", "15"]
+      volumeMounts:
+        - { name: models, mountPath: /models }
     initContainers:
       - name: fetch-weights
         # Pinned by digest, not :latest. Resolved on 2026-08-19 with
@@ -53,12 +151,12 @@ spec:
           - |
             set -eu
             command -v sha256sum >/dev/null || { echo "sha256sum missing in init image" >&2; exit 1; }
-            if [ -f /mnt/models/model.gguf ]; then
+            if [ -f /models/model.gguf ]; then
               echo "weights already present"; exit 0
             fi
-            curl -fL --retry 3 -o /mnt/models/model.gguf \
+            curl -fL --retry 3 -o /models/model.gguf \
               "https://huggingface.co/${HF_REPO}/resolve/main/${HF_FILE}"
-            echo "${SHA256}  /mnt/models/model.gguf" | sha256sum -c -
+            echo "${SHA256}  /models/model.gguf" | sha256sum -c -
         env:
           # Values come from models/ornith-9b/base/model.yaml. They are written
           # in directly, not templated: a sed step nobody runs would otherwise
@@ -76,7 +174,7 @@ spec:
           requests: { cpu: 100m, memory: 64Mi }
           limits: { cpu: 500m, memory: 256Mi }
         volumeMounts:
-          - { name: models, mountPath: /mnt/models }
+          - { name: models, mountPath: /models }
     volumes:
       - name: models
         emptyDir: { sizeLimit: 12Gi }

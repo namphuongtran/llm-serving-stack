@@ -38,7 +38,13 @@ start_grafana_portforward() {
 
 @test "prometheus is scraping the predictor" {
   start_prom_portforward
-  run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode 'query=up{namespace=\"llm\"}' | jq -r '.data.result | length'"
+  run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode 'query=up{namespace=\"llm\"} == 1' | jq -r '.data.result | length'"
+  # `== 1`, not bare `up{...}`. `up` is 0 for a target Prometheus DISCOVERED but
+  # could not scrape, and 0 is still a series, so `.data.result | length >= 1`
+  # passed on a namespace where every target was down. Measured on a live kind
+  # cluster on 2026-08-19: `up == 0` returned 6 series at that moment (the
+  # control-plane components kube-prometheus-stack scrapes but kind does not
+  # expose), so this is a routine state here, not a hypothetical one.
   [ "$output" -ge 1 ]
 }
 
@@ -100,7 +106,13 @@ start_grafana_portforward() {
 # value depends on pod labels this repository does not set.
 @test "prometheus is scraping the istio gateway, not only the predictor" {
   start_prom_portforward
-  run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode 'query=up{namespace=\"istio-system\"}' | jq -r '.data.result | length'"
+  run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode 'query=up{namespace=\"istio-system\"} == 1' | jq -r '.data.result | length'"
+  # `== 1`, not bare `up{...}`. `up` is 0 for a target Prometheus DISCOVERED but
+  # could not scrape, and 0 is still a series, so `.data.result | length >= 1`
+  # passed on a namespace where every target was down. Measured on a live kind
+  # cluster on 2026-08-19: `up == 0` returned 6 series at that moment (the
+  # control-plane components kube-prometheus-stack scrapes but kind does not
+  # expose), so this is a routine state here, not a hypothetical one.
   [ "$output" -ge 1 ]
 }
 

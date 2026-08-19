@@ -48,7 +48,33 @@ setup() {
 @test "/metrics exposes the minimum required series" {
   pod=$(kubectl --context "$KUBECTL_CONTEXT" -n llm get pod \
         -l serving.kserve.io/inferenceservice=ornith-9b -o name | head -1)
+  [ -n "$pod" ] || fail "no predictor pod matched the inferenceservice label"
+
+  # curl, not wget. The pinned engine image has no wget: llama.cpp's
+  # .devops/cpu.Dockerfile at tag b10481 builds `FROM base AS server`, and the
+  # base stage installs exactly `libgomp1 curl ffmpeg` on ubuntu:24.04. The
+  # image's own HEALTHCHECK is `curl -f http://localhost:8080/health`.
+  #
+  # The old `wget` call did not fail usefully. kubectl's "executable file not
+  # found" text landed in $output, and the integer test below then reported
+  # `integer expression expected` - a malformed integer, not a missing binary.
+  # This test runs first in both CI cluster jobs, so that was the first red
+  # line anyone would have seen. Found by reading the Dockerfile at the pinned
+  # tag, 2026-08-19.
   run bash -c "kubectl --context $KUBECTL_CONTEXT -n llm exec ${pod} -c kserve-container -- \
-      wget -qO- http://127.0.0.1:8080/metrics | grep -cE 'requests|tokens'"
-  [ "$output" -gt 0 ]
+      curl -sS http://127.0.0.1:8080/metrics"
+  [ "$status" -eq 0 ] || fail "could not read /metrics from ${pod}: $output"
+
+  # Name the series, do not count matches of a loose pattern. `grep -cE
+  # 'requests|tokens'` matched `# HELP` and `# TYPE` comment lines too, so any
+  # engine exposing any Prometheus output passed a test called "the minimum
+  # required series". These three are the ones
+  # platform/30-observability/recording-rules.yaml actually consumes, so they
+  # are the real contract.
+  for series in llamacpp:requests_deferred \
+                llamacpp:tokens_predicted_total \
+                llamacpp:prompt_tokens_total; do
+    printf '%s\n' "$output" | grep -q "^${series}" \
+      || fail "missing required series ${series} in /metrics"
+  done
 }

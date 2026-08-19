@@ -89,3 +89,37 @@ kserve:
         # cannot disagree, and so the ConfigMap never carries a
         # knative-serving reference in a cluster that has no Knative.
         gateway: istio-system/llm
+
+  # The model agent's own image, pinned by digest like every other image here.
+  #
+  # Added 2026-08-19, after the model layer was run for the first time. KServe
+  # injects this container into the predictor pod whenever it infers multi-model
+  # serving, which it does for any InferenceService with no storageUri (see
+  # models/ornith-9b/overlays/local/patch-resources.yaml for the chain). The
+  # chart's default leaves `tag: ''`, so the rendered ConfigMap carried
+  # `kserve/agent:v0.20.0` - a floating tag.
+  #
+  # That is not a theoretical objection. The pod was REJECTED at admission by
+  # this repository's own policy:
+  #   admission webhook "validate.kyverno.svc-fail" denied the request:
+  #   disallow-floating-tags: require-digest-or-fixed-tag: 'validation error:
+  #   every image must be pinned by digest, not a floating tag - init containers
+  #   included. rule require-digest-or-fixed-tag failed at path
+  #   /spec/containers/1/image/'
+  # containers[1] is this agent. So the policy worked exactly as designed and
+  # caught an unpinned image that the platform layer itself introduced.
+  #
+  # read 2026-08-19 over HTTPS against Docker Hub, no daemon: fetched the index
+  # for tag v0.20.0, took the linux/arm64 child, then read that child's config
+  # blob and confirmed `os: linux`, `architecture: arm64`.
+  #
+  # The tag carries the digest because that is what the chart renders into the
+  # ConfigMap: `image` and `tag` are concatenated, so putting the digest in the
+  # tag produces the repository's standard `name:tag@sha256:...` form. Verified
+  # by rendering the chart and reading `.data.agent | .image` out of the output.
+  #
+  # DUPLICATED: clusters/local-kind/apps/20-kserve.yaml carries the same two
+  # lines inline, because an Argo CD Application cannot read this file.
+  agent:
+    image: kserve/agent
+    tag: "v0.20.0@sha256:17db4be84440fc92e27dc3e7cac706514ff555ba6fd942424f4d219e2c58930e"

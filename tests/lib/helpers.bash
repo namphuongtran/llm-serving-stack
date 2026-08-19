@@ -4,6 +4,17 @@ export API_HOST="llm.localtest.me"
 
 k() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
 
+# fail <message> — abort the current test with a message that names the cause.
+#
+# Added 2026-08-19. bats core does not provide `fail`; it comes from the
+# separate bats-assert library, which this repository does not vendor and which
+# is not installed here (`ls /opt/homebrew/lib/bats-*` lists only bats' own
+# internals). So a bare `fail "..."` would have died with "command not found",
+# which fails the test for the wrong reason and prints the wrong cause. That is
+# the same defect class this helper exists to fix, so it is defined here rather
+# than assumed.
+fail() { printf '%s\n' "$1" >&2; return 1; }
+
 # wait_for <seconds> <description> <command...>
 wait_for() {
   local timeout="$1"; local what="$2"; shift 2

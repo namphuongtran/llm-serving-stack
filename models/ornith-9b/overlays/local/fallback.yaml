@@ -42,14 +42,19 @@ spec:
       args:
         - --alias
         - fallback-small
-    containers:
-      - name: kserve-container
-        resources:
-          # A 0.5B Q4 model needs a fraction of the primary's footprint.
-          requests: { cpu: "1", memory: 1Gi }
-          limits: { cpu: "2", memory: 2Gi }
-        volumeMounts:
-          - { name: models, mountPath: /mnt/models }
+    # Overrides live under `model:`, not in a `containers:` entry. KServe
+    # v0.20.0's webhook counts a container named kserve-container as a second
+    # predictor implementation alongside `model:` and rejects the pair with
+    # "exactly one of [...] must be specified in PredictorSpec". The reasoning,
+    # the upstream source line, and the exact rejection text are recorded once
+    # in overlays/local/patch-resources.yaml. `initContainers` and `volumes` are
+    # not counted, so they stay where they are.
+      resources:
+        # A 0.5B Q4 model needs a fraction of the primary's footprint.
+        requests: { cpu: "1", memory: 1Gi }
+        limits: { cpu: "2", memory: 2Gi }
+      volumeMounts:
+        - { name: models, mountPath: /models }
     initContainers:
       - name: fetch-weights
         # Same pinned curl image as the primary's fetch-weights container;
@@ -60,12 +65,12 @@ spec:
           - |
             set -eu
             command -v sha256sum >/dev/null || { echo "sha256sum missing in init image" >&2; exit 1; }
-            if [ -f /mnt/models/model.gguf ]; then
+            if [ -f /models/model.gguf ]; then
               echo "weights already present"; exit 0
             fi
-            curl -fL --retry 3 -o /mnt/models/model.gguf \
+            curl -fL --retry 3 -o /models/model.gguf \
               "https://huggingface.co/${HF_REPO}/resolve/main/${HF_FILE}"
-            echo "${SHA256}  /mnt/models/model.gguf" | sha256sum -c -
+            echo "${SHA256}  /models/model.gguf" | sha256sum -c -
         env:
           # Values come from models/ornith-9b/base/model.yaml, model.ci.
           - { name: HF_REPO, value: "Qwen/Qwen2.5-0.5B-Instruct-GGUF" }
@@ -81,7 +86,7 @@ spec:
           requests: { cpu: 100m, memory: 64Mi }
           limits: { cpu: 500m, memory: 256Mi }
         volumeMounts:
-          - { name: models, mountPath: /mnt/models }
+          - { name: models, mountPath: /models }
     volumes:
       - name: models
         emptyDir: { sizeLimit: 2Gi }

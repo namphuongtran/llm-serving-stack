@@ -12,26 +12,56 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Sourced at TOP LEVEL, not inside a command substitution, and that placement
+# is the whole point. This script deletes a namespace. Until 2026-08-19 the
+# helpers were sourced only inside the `TOKEN=` substitution below, so
+# KUBECTL_CONTEXT and k() did not exist at the `delete namespace` line, and
+# that line ran bare `kubectl` against whatever context happened to be
+# current. On the machine where this was found, `kubectl config
+# current-context` was `docker-desktop`.
+#
+# That is not a silent failure, it is a silent success against the wrong
+# cluster, which is worse. bench/run.sh:7-13 already carried the written
+# warning against exactly this; this file now follows it.
+# shellcheck source=tests/lib/helpers.bash
+source tests/lib/helpers.bash
+
 BASE="http://llm.localtest.me"
 OUT="bench/results/$(date +%Y-%m-%d)-recovery"
 mkdir -p "$OUT"
 
+# Refuse to run at all if the context is not the kind cluster. A drill whose
+# whole first act is `delete namespace` does not get to guess.
+k config current-context >/dev/null 2>&1 || {
+  printf 'recovery-drill: context %s is not reachable, refusing to delete anything\n' \
+    "$KUBECTL_CONTEXT" >&2
+  exit 1
+}
+
 start_epoch=$(date +%s)
-kubectl delete namespace llm --wait=true
+k delete namespace llm --wait=true
 
 # Argo CD rebuilds without human help. If it does not, the drill has found a
 # manual step and that is the finding.
-kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy \
+k -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy \
   applications.argoproj.io --all --timeout=40m
 
-TOKEN="$(source tests/lib/helpers.bash && get_token llm-tier-pro)"
+TOKEN="$(get_token llm-tier-pro)"
+[ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || {
+  printf 'recovery-drill: get_token returned no usable token\n' >&2
+  exit 1
+}
 
 # Readiness gate, kept: it is the cheapest way to know the endpoint exists
 # before opening a stream against it. It is recorded separately and is NOT
 # the headline number.
-until curl -sf "$BASE/v1/models" -H "authorization: Bearer $TOKEN" >/dev/null; do
-  sleep 5
-done
+# Bounded, using the helper the rest of the repository already uses. This was
+# a bare `until ... sleep 5` loop with no deadline until 2026-08-19: if the
+# endpoint never came back, `task drill:recovery` hung with no output and the
+# recovery time objective was neither produced nor refuted. 40m matches the
+# Argo CD wait above it.
+wait_for 2400 "the gateway to answer /v1/models after the namespace rebuild" \
+  curl -sf "$BASE/v1/models" -H "authorization: Bearer $TOKEN"
 models_epoch=$(date +%s)
 
 # The real measurement: one streaming chat completion, timed to the arrival

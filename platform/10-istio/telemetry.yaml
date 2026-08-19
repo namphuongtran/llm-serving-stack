@@ -39,9 +39,27 @@ spec:
   # every workload for spans they cannot produce. istiod sets this label on the
   # Deployment it generates for a Gateway API Gateway, and
   # platform/30-observability/podmonitor.yaml selects on the same key.
+  #
+  # CORRECTED 2026-08-19, and this one was OBSERVED rather than reasoned. The
+  # key here was `istio.io/gateway-name`, which Istio removed in 1.24; it is
+  # re-added only onto a Deployment that already carries it, which a fresh
+  # install never does. This repository pins 1.30.3, so the selector matched
+  # nothing and the gateway was never told to emit spans - which made the trace
+  # pipeline's only producer inert.
+  #
+  # Settled on a live kind cluster on 2026-08-19, after `platform/10-istio/install.sh`:
+  #   kubectl -n istio-system get pod -l istio.io/gateway-name=llm -o name
+  #     -> 0 pods
+  #   kubectl -n istio-system get pod -l gateway.networking.k8s.io/gateway-name=llm -o name
+  #     -> 1 pod (llm-istio-6dddc496d6-vprht)
+  # No pod carried the old key at all. The pod's full label set is
+  # gateway.istio.io/managed, gateway.networking.k8s.io/gateway-class-name,
+  # gateway.networking.k8s.io/gateway-name, istio.io/dataplane-mode,
+  # pod-template-hash, service.istio.io/canonical-name,
+  # service.istio.io/canonical-revision, and sidecar.istio.io/inject.
   selector:
     matchLabels:
-      istio.io/gateway-name: llm
+      gateway.networking.k8s.io/gateway-name: llm
   tracing:
     - providers:
         - name: otel-tracing

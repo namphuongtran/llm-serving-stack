@@ -42,7 +42,7 @@ spec:
       # models touches models/, never runtimes/.
       args:
         - --model
-        - /mnt/models/model.gguf
+        - /models/model.gguf
         - --host
         - 0.0.0.0
         - --port
@@ -69,7 +69,7 @@ spec:
         initialDelaySeconds: 120
         periodSeconds: 30
       volumeMounts:
-        - { name: models, mountPath: /mnt/models }
+        - { name: models, mountPath: /models }
       resources:
         requests: { cpu: "2", memory: 8Gi }
         limits: { cpu: "6", memory: 12Gi }

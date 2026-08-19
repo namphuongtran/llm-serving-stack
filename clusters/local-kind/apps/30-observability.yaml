@@ -107,13 +107,36 @@ spec:
                   - { key: gen_ai.system, value: llamacpp, action: upsert }
                   - { key: gen_ai.request.model, value: ornith-9b, action: upsert }
             exporters:
+              # Copied from platform/30-observability/otel-collector.yaml on
+              # 2026-08-19, because it was MISSING here and that made this the
+              # only real value drift between the two install paths.
+              #
+              # Commit a5c71e9 added Tempo and touched both files, but in this
+              # one it added only the Grafana datasource. So the exporter and
+              # the pipeline entry below never arrived, and the rendered
+              # collector sent traces to `debug` and nowhere else.
+              #
+              # That mattered more than the imperative copy, not less: this is
+              # the GitOps path, so `task local:up` is what people actually
+              # run. Tempo came up, Grafana had a working Tempo datasource,
+              # and the datasource was empty. tests/smoke/05-observability.bats
+              # "spans are reaching tempo" would fail here and pass on an
+              # install.sh cluster.
+              #
+              # Endpoint and the plaintext listener are the same two facts the
+              # imperative copy cites: Service/tempo in namespace
+              # observability, port 4317 named otlp-grpc, declared in
+              # platform/30-observability/tempo.yaml.
+              otlp/tempo:
+                endpoint: tempo.observability.svc.cluster.local:4317
+                tls: { insecure: true }
               debug: { verbosity: basic }
             service:
               pipelines:
                 traces:
                   receivers: [otlp]
                   processors: [attributes/genai, batch]
-                  exporters: [debug]
+                  exporters: [otlp/tempo, debug]
     - repoURL: https://prometheus-community.github.io/helm-charts
       chart: prometheus-pushgateway
       targetRevision: 3.8.0

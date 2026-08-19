@@ -134,6 +134,20 @@ tasks:
       # against live Application objects and has never run anywhere, so until
       # now nothing checked it at all. This form needs no cluster.
       - ./clusters/local-kind/check-sync-waves.sh
+      # Every tracked shell script must be mode 100755 in GIT, not merely on the
+      # machine that wrote it. Added 2026-08-19 after the first real run of the
+      # imperative path, which died with
+      #   ./platform/50-argocd/install.sh - Permission denied
+      # That file alone was 100644 while the other fifteen were 100755, so
+      # `task local:up` failed at its SECOND command on any fresh clone. No
+      # static check found it in four review passes, because a file mode is not
+      # file content - only running it, or this check, can.
+      #
+      # `git ls-files -s`, not `test -x`. The working tree can have the bit
+      # while the index does not; on this repository's volume `chmod +x` alone
+      # did not update the index and `git update-index --chmod=+x` was needed.
+      # A clone reads the index, so the index is what must be right.
+      - '[ "$(git ls-files -s ''*.sh'' | awk ''$1 != "100755"'' | wc -l)" -eq 0 ]'
 
   policy:
     desc: Run admission policies locally, the same ones the cluster enforces

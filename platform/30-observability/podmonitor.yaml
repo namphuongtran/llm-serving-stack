@@ -45,16 +45,35 @@ spec:
 # istiod 1.30.3 with this repository's own install arguments on 2026-08-19
 # produced a mesh ConfigMap containing `enablePrometheusMerge: true`.
 #
-# > **Untried (2026-08-19):** that an istiod-generated gateway pod declares
-# > container port 15020, and that it carries the label selected below. The CRD
-# > states plainly that `portNumber` still requires the pod to declare the
-# > port ("This cannot be used to enable scraping of an undeclared port"), so
-# > if it does not, this discovers nothing and every llmstack:gateway_* rule
-# > goes silent. Confirm both with:
-# >   kubectl -n istio-system get pod -l istio.io/gateway-name=llm \
-# >     -o jsonpath='{.items[0].spec.containers[*].ports[*].containerPort}'
-# > tests/smoke/05-observability.bats has a test that fails if this scrape
-# > produces no target, so the silence is caught rather than believed.
+# SETTLED 2026-08-19 on a live kind cluster. This block carried an `Untried`
+# marker asking two questions. Both now have answers, and they differ:
+#
+#   1. Does the pod declare container port 15020?  YES.
+#      kubectl -n istio-system get pod -l gateway.networking.k8s.io/gateway-name=llm \
+#        -o jsonpath='{range .items[0].spec.containers[*]}{.name}{": "}{range .ports[*]}{.name}{"/"}{.containerPort}{" "}{end}{end}'
+#      printed `istio-proxy: metrics/15020 status-port/15021 http-envoy-prom/15090`.
+#      So the CRD's requirement is met - it says `portNumber` "cannot be used to
+#      enable scraping of an undeclared port", and 15020 is declared.
+#
+#   2. Does the pod carry the label this file selected?  NO, and that was a
+#      real defect. The selector below read `istio.io/gateway-name`, a key
+#      Istio removed in 1.24. On the same cluster:
+#        -l istio.io/gateway-name=llm                    -> 0 pods
+#        -l gateway.networking.k8s.io/gateway-name=llm    -> 1 pod
+#      Nothing carried the old key at all, so this PodMonitor discovered no
+#      target and every llmstack:gateway_* rule would have gone silent. The
+#      selector is corrected below, and the same correction was applied to
+#      platform/10-istio/telemetry.yaml, which had the same key.
+#
+# The confirming command in the old marker used the dead label too, so running
+# it would have reported a false negative about the port. That is why it is
+# rewritten above rather than kept.
+#
+# > **Untried (2026-08-19):** that this scrape returns data, as opposed to
+# > merely finding a target. The port is declared and the selector now matches,
+# > but no Prometheus has scraped it here yet. Settle it with
+# > `tests/smoke/05-observability.bats`, whose "prometheus is scraping the
+# > gateway" test fails when the target set is empty.
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
@@ -66,7 +85,7 @@ spec:
     # Selected by existence rather than by value, so a second Gateway added
     # later is scraped without editing this file. istiod sets this label on the
     # Deployment it generates for a Gateway API Gateway.
-    matchExpressions: [{ key: istio.io/gateway-name, operator: Exists }]
+    matchExpressions: [{ key: gateway.networking.k8s.io/gateway-name, operator: Exists }]
   podMetricsEndpoints:
     - portNumber: 15020
       path: /stats/prometheus
