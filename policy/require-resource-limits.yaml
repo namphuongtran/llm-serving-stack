@@ -24,10 +24,26 @@ spec:
               kinds: [Pod]
               namespaces: [llm]
       validate:
-        message: "cpu and memory limits are required: an unbounded model server can evict the control plane"
+        message: "cpu and memory limits are required on every container, init containers included: an unbounded model server can evict the control plane"
         pattern:
           spec:
             containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"
+            # `=(initContainers)` is Kyverno's equality anchor: the key is
+            # optional, but when it is present the value must match. A plain
+            # `initContainers:` key would reject every pod that has none.
+            #
+            # Without this block the rule inspected spec.containers only, so
+            # every fetch-weights init container in this repository
+            # (models/ornith-9b/overlays/*/patch-resources.yaml and
+            # fallback.yaml) escaped the rule entirely - an init container
+            # downloading a 5.6 GB file with no memory limit is exactly the
+            # case the message above describes. policy/tests covers both the
+            # pass and the fail case; see policy/tests/resources.yaml.
+            =(initContainers):
               - resources:
                   limits:
                     memory: "?*"

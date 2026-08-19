@@ -38,6 +38,27 @@ charts:
   argo_cd: "10.4.0"                    # argo/argo-cd
   kyverno: "3.8.2"                     # kyverno/kyverno
 
+tools:
+  # CI-installed command line tools. The repository's own rule forbids
+  # floating pins, and .github/workflows/ci.yml used to break it twice: it
+  # fetched kustomize's installer from `releases/latest` and resolved the
+  # Kyverno CLI tag from the GitHub API at run time, so two different CI runs
+  # of the same commit could use two different tool versions.
+  #
+  # read 2026-08-19:
+  #   kustomize: `curl -s https://api.github.com/repos/kubernetes-sigs/kustomize/releases?per_page=30`
+  #     -> newest tag beginning "kustomize/" is kustomize/v5.8.1. Asset
+  #     kustomize_v5.8.1_linux_arm64.tar.gz returns HTTP 200.
+  #   kyverno_cli: `curl -s https://api.github.com/repos/kyverno/kyverno/releases/latest`
+  #     -> v1.18.2. Asset kyverno-cli_v1.18.2_linux_arm64.tar.gz returns HTTP
+  #     200. This is also the CLI version policy/tests was verified against.
+  #
+  # ci.yml writes these two strings in literally (a workflow cannot read this
+  # file before it has installed yq), so changing one here means changing it
+  # there too.
+  kustomize: "v5.8.1"
+  kyverno_cli: "v1.18.2"
+
 crds:
   # The criterion here is the version KServe v0.20.0 is built against, not the newest
   # upstream release (the newest release, v1.6.1, is a different question and was the
@@ -129,6 +150,14 @@ kuadrant:
   operator_chart_version: "1.5.2"
 
 images:
+  # This block is the single source of truth for image digests, but not the
+  # only place they appear: an Argo CD Application is one git object and
+  # cannot read this file, so clusters/local-kind/apps/30-observability.yaml
+  # carries a rendered copy of `otel_collector`'s digest in its inline Helm
+  # values. That duplication is accepted, not an oversight - changing a
+  # digest here means grepping for the old one and updating every rendered
+  # copy in a values file or Application.
+  #
   # read 2026-08-19 via `docker buildx imagetools inspect <ref>`; digest is the linux/arm64
   # manifest digest, confirmed present in the same inspect output for both images.
   llamacpp_server: "ghcr.io/ggml-org/llama.cpp@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b"
@@ -149,3 +178,14 @@ images:
   # fetch-weights init container in models/ornith-9b/overlays/local, pinned by
   # digest rather than :latest per the repository-wide digest-pinning rule.
   curl: "curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84"
+  # read 2026-08-19 via `docker buildx imagetools inspect ealen/echo-server:0.9.2`
+  # (registry-only, no docker daemon needed); digest is the linux/arm64
+  # manifest digest from that inspect output. Used only by the throwaway
+  # backend tests/smoke/02-gateway.bats creates to prove traffic reaches a
+  # pod through the gateway. It is pinned here, rather than referenced as a
+  # floating tag inside the test, because namespace llm enforces
+  # policy/disallow-floating-tags.yaml: the fixture the test creates has to
+  # satisfy the same three policies every other workload in that namespace
+  # does, or admission rejects it and the test fails 120 seconds later at a
+  # curl loop with no stated cause.
+  echo_server: "ealen/echo-server@sha256:74afa5ffd1f0cd81bea9a3ef2f27341dc7e93ed221f2817a2119c230c25cc8a2"

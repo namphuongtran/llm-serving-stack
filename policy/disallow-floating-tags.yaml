@@ -25,8 +25,15 @@ spec:
               kinds: [Pod]
               namespaces: [llm]
       validate:
-        message: "image must be pinned by digest, not a floating tag"
+        message: "every image must be pinned by digest, not a floating tag - init containers included"
         pattern:
           spec:
             containers:
+              - image: "*@sha256:*"
+            # Same equality anchor, and the same reason, as
+            # require-resource-limits.yaml: the key is optional, but when a
+            # pod has init containers their images must be pinned too.
+            # Before this block, the fetch-weights init container's image was
+            # never inspected by this rule.
+            =(initContainers):
               - image: "*@sha256:*"

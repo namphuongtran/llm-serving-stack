@@ -11,7 +11,24 @@ spec:
     - name: gguf
       version: "1"
       autoSelect: false
-  protocolVersions: ["v2"]
+  # protocolVersions is deliberately ABSENT, not set to ["v2"].
+  #
+  # The field enumerates KServe's own open inference protocol versions - the
+  # doc comment on the field at tag v0.20.0 reads "Supported protocol
+  # versions (i.e. v1 or v2 or grpc-v1 or grpc-v2)"
+  # (pkg/apis/serving/v1alpha1/servingruntime_types.go:140, read 2026-08-19).
+  # llama.cpp implements none of them: it serves the OpenAI API
+  # (/v1/chat/completions, /v1/completions, /v1/models), which is what
+  # tests/contract/01-openai-api.bats asserts. Declaring "v2" claimed a
+  # protocol this engine does not speak, and there is no enumerated value
+  # that means "OpenAI", so the honest form is to omit the field.
+  #
+  # Omitting it is also functionally correct here.
+  # ServingRuntimeSpec.IsProtocolVersionSupported (same file, line 304)
+  # returns true when the list is empty, and this repository's
+  # InferenceServices name the runtime explicitly
+  # (spec.predictor.model.runtime: llamacpp-arm64) rather than relying on
+  # protocol-based selection, so nothing depended on the old value.
   containers:
     - name: kserve-container
       # Pinned digest, read from versions.yaml (images.llamacpp_server) on

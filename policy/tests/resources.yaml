@@ -94,3 +94,66 @@ spec:
           resources:
             requests: { cpu: 100m, memory: 64Mi }
             limits: { cpu: 100m, memory: 64Mi }
+---
+# Init-container fixtures. Added 2026-08-19 with the `=(initContainers)`
+# blocks in require-resource-limits.yaml and disallow-floating-tags.yaml:
+# before those blocks, both rules inspected spec.containers only, so every
+# fetch-weights init container in this repository escaped both rules. These
+# three pods are what proves the new blocks work and, just as importantly,
+# that good-pod above (which has NO initContainers key at all) still passes -
+# that is the case the equality anchor exists to protect.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-init-pod
+  namespace: llm
+spec:
+  initContainers:
+    - name: fetch
+      image: busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      resources:
+        requests: { cpu: 100m, memory: 64Mi }
+        limits: { cpu: 100m, memory: 64Mi }
+  containers:
+    - name: c
+      image: busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      resources:
+        requests: { cpu: 100m, memory: 64Mi }
+        limits: { cpu: 100m, memory: 64Mi }
+---
+# Compliant main container, non-compliant init container: fails only because
+# of the init container, which is the whole point.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nolimits-init-pod
+  namespace: llm
+spec:
+  initContainers:
+    - name: fetch
+      image: busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  containers:
+    - name: c
+      image: busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      resources:
+        requests: { cpu: 100m, memory: 64Mi }
+        limits: { cpu: 100m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: floating-init-pod
+  namespace: llm
+spec:
+  initContainers:
+    - name: fetch
+      image: busybox:latest
+      resources:
+        requests: { cpu: 100m, memory: 64Mi }
+        limits: { cpu: 100m, memory: 64Mi }
+  containers:
+    - name: c
+      image: busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      resources:
+        requests: { cpu: 100m, memory: 64Mi }
+        limits: { cpu: 100m, memory: 64Mi }

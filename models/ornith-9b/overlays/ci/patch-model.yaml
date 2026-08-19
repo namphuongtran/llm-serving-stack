@@ -55,6 +55,15 @@ spec:
           - { name: HF_REPO, value: "Qwen/Qwen2.5-0.5B-Instruct-GGUF" }
           - { name: HF_FILE, value: "qwen2.5-0.5b-instruct-q4_k_m.gguf" }
           - { name: SHA256, value: "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db" }
+        # Limits are required, not optional: policy/require-resource-limits.yaml
+        # now inspects spec.initContainers as well as spec.containers (the
+        # `=(initContainers)` block added 2026-08-19). Without these the
+        # predictor pod is rejected at admission. Sized for what this
+        # container actually does - one curl writing to an emptyDir - not for
+        # the model it downloads.
+        resources:
+          requests: { cpu: 100m, memory: 64Mi }
+          limits: { cpu: 500m, memory: 256Mi }
         volumeMounts:
           - { name: models, mountPath: /mnt/models }
     volumes:

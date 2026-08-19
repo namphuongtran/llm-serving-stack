@@ -46,3 +46,29 @@ results:
     kind: Deployment
     resources: ["llm/bad-deployment"]
     result: fail
+  # Init-container coverage, added 2026-08-19 alongside the
+  # `=(initContainers)` blocks in both policies. good-init-pod proves a
+  # compliant init container passes; the other two prove a non-compliant one
+  # fails, with the main container left compliant so only the init container
+  # can be the cause. good-pod above (no initContainers key at all) still
+  # passing is what proves the equality anchor keeps the key optional.
+  - policy: require-resource-limits
+    rule: check-limits
+    kind: Pod
+    resources: ["llm/good-init-pod"]
+    result: pass
+  - policy: disallow-floating-tags
+    rule: require-digest-or-fixed-tag
+    kind: Pod
+    resources: ["llm/good-init-pod"]
+    result: pass
+  - policy: require-resource-limits
+    rule: check-limits
+    kind: Pod
+    resources: ["llm/nolimits-init-pod"]
+    result: fail
+  - policy: disallow-floating-tags
+    rule: require-digest-or-fixed-tag
+    kind: Pod
+    resources: ["llm/floating-init-pod"]
+    result: fail

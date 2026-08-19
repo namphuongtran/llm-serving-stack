@@ -9,10 +9,25 @@ spec:
     # Streaming answers run for tens of seconds. The pod must finish them
     # before Kubernetes kills it, not just stop accepting new ones.
     terminationGracePeriodSeconds: 120
+    # DoNotSchedule, not ScheduleAnyway. tests/smoke/08-availability.bats
+    # asserts that the two replicas land on different nodes, and the two
+    # tests after it (the PDB's currentHealthy/disruptionsAllowed, and the
+    # node drain) only mean anything if that is true: with both replicas on
+    # one node, draining that node takes the whole service out. ScheduleAnyway
+    # treats the constraint as a preference the scheduler may ignore, so the
+    # manifest and the test disagreed - and the honest way to settle that is
+    # to make the constraint say what the test checks, not to weaken the test
+    # into one that passes with both pods on one node.
+    #
+    # The cost is stated rather than hidden: if no second node can fit a
+    # replica, the second pod stays Pending instead of quietly landing beside
+    # the first. That is a visible failure with a readable reason, which is
+    # the outcome this repository prefers over a silent loss of the property
+    # the PDB and the drain runbook both assume.
     topologySpreadConstraints:
       - maxSkew: 1
         topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: ScheduleAnyway
+        whenUnsatisfiable: DoNotSchedule
         labelSelector:
           matchLabels:
             serving.kserve.io/inferenceservice: ornith-9b
@@ -51,6 +66,15 @@ spec:
           - { name: HF_REPO, value: "ornith-ai/Ornith-1.0-9B-GGUF" }
           - { name: HF_FILE, value: "ornith-1.0-9b-Q4_K_M.gguf" }
           - { name: SHA256, value: "5720d1f671b4996481274fffe01868c3c36e87c135cc8538471cc7bd6087b106" }
+        # Limits are required, not optional: policy/require-resource-limits.yaml
+        # now inspects spec.initContainers as well as spec.containers (the
+        # `=(initContainers)` block added 2026-08-19). Without these the
+        # predictor pod is rejected at admission. Sized for what this
+        # container actually does - one curl writing to an emptyDir - not for
+        # the model it downloads.
+        resources:
+          requests: { cpu: 100m, memory: 64Mi }
+          limits: { cpu: 500m, memory: 256Mi }
         volumeMounts:
           - { name: models, mountPath: /mnt/models }
     volumes:
