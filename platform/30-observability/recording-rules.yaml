@@ -58,3 +58,33 @@ spec:
           expr: quantile_over_time(0.5, llm_ttft_probe_seconds[15m])
         - record: llmstack:ttft_seconds:p95
           expr: quantile_over_time(0.95, llm_ttft_probe_seconds[15m])
+
+    # Pushgateway serves the last value it was ever given, forever - a dead
+    # ttft-prober CronJob does not clear llm_ttft_probe_seconds, it freezes
+    # it, and Prometheus keeps re-scraping that frozen number looking exactly
+    # like a healthy measurement. This group closes that gap the way
+    # Pushgateway's own README recommends ("Alerting on failed pushes"):
+    # push_time_seconds is a meta-metric Pushgateway itself adds per pushed
+    # group, holding the Unix timestamp of the last successful push, so
+    # `time() - push_time_seconds` is exactly "how long since the prober last
+    # actually ran", independent of whatever value it last pushed.
+    # values-prometheus.yaml sets alertmanager.enabled: false (phase 1 has no
+    # notification routing target), so this alert has nowhere to page. It
+    # still fires and is visible directly: Prometheus evaluates it and
+    # exposes it as its own ALERTS/ALERTS_FOR_STATE series and on its
+    # /api/v1/alerts endpoint regardless of whether Alertmanager is running,
+    # and the dashboard panel below queries push_time_seconds directly
+    # rather than depending on this alert's firing state.
+    - name: llmstack.alerts
+      interval: 30s
+      rules:
+        - alert: TTFTProberStale
+          # The prober runs once a minute; 300s tolerates a handful of missed
+          # runs before paging, and `for: 2m` keeps a single borderline scrape
+          # from flapping the alert.
+          expr: time() - push_time_seconds{job="ttft-prober"} > 300
+          for: 2m
+          labels: { severity: warning }
+          annotations:
+            summary: "TTFT prober has not pushed in over 5 minutes"
+            description: "llmstack:ttft_seconds:p50/p95 are frozen at whatever llm_ttft_probe_seconds last held, not a live measurement. Check the ttft-prober CronJob in the observability namespace."

@@ -3,41 +3,117 @@
   "uid": "llm-serving",
   "schemaVersion": 39,
   "refresh": "30s",
-  "time": { "from": "now-30m", "to": "now" },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "panels": [
     {
       "type": "timeseries",
       "title": "Do users experience it as slow? TTFT p50 and p95 (measured by client-side prober, not reported by the engine)",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 0,
+        "y": 0
+      },
       "targets": [
-        { "expr": "llmstack:ttft_seconds:p50", "legendFormat": "p50" },
-        { "expr": "llmstack:ttft_seconds:p95", "legendFormat": "p95" }
+        {
+          "expr": "llmstack:ttft_seconds:p50",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "llmstack:ttft_seconds:p95",
+          "legendFormat": "p95"
+        }
       ]
+    },
+    {
+      "type": "stat",
+      "title": "TTFT prober freshness (seconds since last push)",
+      "description": "If this is red, the TTFT panel to the left is showing a frozen number from a dead prober, not a live measurement. Pushgateway serves the last value it was ever given forever, so a stopped ttft-prober CronJob looks identical to a healthy one unless this is checked separately. Backed by the same push_time_seconds meta-metric as the TTFTProberStale alert in recording-rules.yaml.",
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 9,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "time() - max(push_time_seconds{job=\"ttft-prober\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 150
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "type": "timeseries",
       "title": "Are we about to saturate? requests waiting and running",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
       "targets": [
-        { "expr": "llmstack:requests_waiting", "legendFormat": "waiting" },
-        { "expr": "llmstack:requests_running", "legendFormat": "running" }
+        {
+          "expr": "llmstack:requests_waiting",
+          "legendFormat": "waiting"
+        },
+        {
+          "expr": "llmstack:requests_running",
+          "legendFormat": "running"
+        }
       ]
     },
     {
       "type": "timeseries",
       "title": "Throughput: output tokens per second",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
       "targets": [
-        { "expr": "rate(llmstack:tokens_out_total[1m])", "legendFormat": "tokens/s" }
+        {
+          "expr": "rate(llmstack:tokens_out_total[1m])",
+          "legendFormat": "tokens/s"
+        }
       ]
     },
     {
       "type": "text",
       "title": "Not available on this engine",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
       "options": {
         "mode": "markdown",
-        "content": "**Prefix cache hit rate** and **KV cache utilisation** are vLLM metrics and arrive in phase 2. llama.cpp does not emit the KV cache events these depend on. See `docs/adr/0006-metric-normalisation.md`. This panel is deliberately text: an empty graph is indistinguishable from a broken one.\n\nThe TTFT panel above is not this engine's own signal either: it comes from a client-side prober CronJob (`platform/30-observability/ttft-prober-cronjob.yaml`), because llama.cpp exposes no latency histogram of any kind. It is labelled in its own title for the same reason - a synthetic number must never look like a served one."
+        "content": "**Prefix cache hit rate** and **KV cache utilisation** are vLLM metrics and arrive in phase 2. llama.cpp does not emit the KV cache events these depend on. See `docs/adr/0006-metric-normalisation.md`. This panel is deliberately text: an empty graph is indistinguishable from a broken one.\n\nThe TTFT panel above is not this engine's own signal either: it comes from a client-side prober CronJob (`platform/30-observability/ttft-prober-cronjob.yaml`), because llama.cpp exposes no latency histogram of any kind. It is labelled in its own title for the same reason - a synthetic number must never look like a served one. Its freshness stat panel exists because a dead prober would otherwise look identical to a working one."
       }
     }
   ]

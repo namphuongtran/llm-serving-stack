@@ -32,6 +32,22 @@ start_prom_portforward() {
   done
 }
 
+# The recording rules deliberately fall back to `or vector(0)` (so KEDA never
+# breaks on an empty result), which means the *normalised* query above always
+# returns exactly one series whether or not the underlying engine metric
+# still exists under that name - a rename would go undetected by that test
+# alone. This test closes that gap by querying the raw, un-normalised
+# `llamacpp:*` series directly, with no `or vector(0)` anywhere in the path:
+# if any of these three names is ever renamed upstream, this fails loudly
+# instead of the recording rule silently going to a permanent zero.
+@test "raw engine series backing the normalisation still exist" {
+  start_prom_portforward
+  for series in llamacpp:requests_processing llamacpp:requests_deferred llamacpp:tokens_predicted_total; do
+    run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode \"query=$series\" | jq -r '.data.result | length'"
+    [ "$output" -ge 1 ]
+  done
+}
+
 @test "dashboard is provisioned and reads only llmstack series" {
   run bash -c "grep -o 'llmstack:[a-z_]*' platform/30-observability/dashboards/llm-serving.json | sort -u | wc -l | tr -d ' '"
   [ "$output" -ge 3 ]

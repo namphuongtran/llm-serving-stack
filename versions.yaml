@@ -133,6 +133,16 @@ images:
   # manifest digest, confirmed present in the same inspect output for both images.
   llamacpp_server: "ghcr.io/ggml-org/llama.cpp@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b"
   keycloak: "quay.io/keycloak/keycloak@sha256:89d56312ace1d9b0bf8168f1a92ea135ba185d2844285f7651cb50774e47c1d8"
+  # read 2026-08-19 via `docker buildx imagetools inspect --format '{{json .Image}}'
+  # ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector@sha256:...`
+  # (registry-only, no daemon needed); architecture field is "arm64" directly.
+  # Tag chosen to match the pinned chart's own appVersion (0.158.0 - see
+  # charts.otel_collector above and its own comment). This is the "core"
+  # distribution (binary name `otelcol`, not `otelcol-contrib`/`otelcol-k8s`):
+  # platform/30-observability/otel-collector.yaml only configures the otlp
+  # receiver, batch and attributes processors, and the debug exporter, all of
+  # which ship in core, so the smaller core image is enough.
+  otel_collector: "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector@sha256:0969430778574e768e0a262fb940c2955b0b13587d2467f3e4876cf6e8f0461c"
   # read 2026-08-19 via `docker buildx imagetools inspect curlimages/curl:8.21.0`
   # (talks to the registry, no docker daemon needed); digest is the
   # linux/arm64/v8 manifest digest from that inspect output. Used by the

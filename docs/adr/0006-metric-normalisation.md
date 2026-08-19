@@ -42,8 +42,14 @@ The image's OCI labels give the exact source commit and build:
 ```
 org.opencontainers.image.revision: 25ae3a9b331fffea50ff8d07a5cad34c33f1276f
 org.opencontainers.image.version:  b10481
-org.opencontainers.image.created:  2026-08-18T04:59:40Z
+org.opencontainers.image.created:  2026-08-18T04:50:51Z
 ```
+
+(the same `docker buildx imagetools inspect --format '{{json .}}'` output also
+carries a `2026-08-18T04:59:40Z` timestamp, nine minutes later - that one is
+the image config's own top-level `.created` field, a separate value from the
+`org.opencontainers.image.created` OCI label above, and this ADR does not rely
+on it for anything.)
 
 The full metric list below is the `/metrics` section of `tools/server/README.md`
 at that exact commit, fetched on 2026-08-19 from:

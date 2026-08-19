@@ -9,14 +9,32 @@
 #
 # Field names checked against the real chart with:
 #   helm show values open-telemetry/opentelemetry-collector --version 0.170.0
-# on 2026-08-19. `mode`, `fullnameOverride`, `resources`, and `config.*` all
-# exist at these paths. The `health_check` extension the chart's own defaults
-# mark "mandatory" and "should never be removed" is not repeated here: `config`
-# is deep-merged with the chart's default config, not a full replacement, and
-# this file does not touch `config.extensions` or `config.service.extensions`,
-# so the default health_check stays in place.
+# on 2026-08-19. `mode`, `fullnameOverride`, `resources`, `image.*`,
+# `command.name`, and `config.*` all exist at these paths. The `health_check`
+# extension the chart's own defaults mark "mandatory" and "should never be
+# removed" is not repeated here: `config` is deep-merged with the chart's
+# default config, not a full replacement, and this file does not touch
+# `config.extensions` or `config.service.extensions`, so the default
+# health_check stays in place.
+#
+# image.repository is not optional: `image.repository: ""` is the chart's own
+# default, and the chart's NOTES.txt template fails the install outright if
+# it is left unset ("'image.repository' must be set."), confirmed with
+# `helm install --dry-run=client` against this exact file before this
+# comment was written. Pinned by digest as images.otel_collector in
+# versions.yaml, read 2026-08-19. This is the "core" collector distribution
+# (entrypoint `/otelcol`), which is why command.name is "otelcol" and not
+# "otelcol-contrib" or "otelcol-k8s" - the config below only needs the otlp
+# receiver, batch and attributes processors, and the debug exporter, all of
+# which ship in core.
 mode: deployment
 fullnameOverride: otel-collector
+image:
+  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector
+  tag: "0.158.0"
+  digest: "sha256:0969430778574e768e0a262fb940c2955b0b13587d2467f3e4876cf6e8f0461c"
+command:
+  name: otelcol
 resources:
   requests: { cpu: 50m, memory: 128Mi }
   limits: { cpu: 500m, memory: 512Mi }
