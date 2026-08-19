@@ -1,0 +1,52 @@
+# Turns on trace export at the gateway. Without this, the extensionProvider in
+# helm/values-istiod.yaml is a configured destination that nothing sends to.
+#
+# This is what gives the trace pipeline a producer. Before it, the OpenTelemetry
+# Collector had an otlp receiver with zero producers and said so in its own
+# comments: llama.cpp emits no spans at all (docs/adr/0005), so the engine was
+# never going to fill it. The gateway is an Envoy, and Envoy does emit spans.
+#
+# What this does and does not buy: one span per request covering the gateway
+# hop, with the route, the response code, and the duration. Nothing about the
+# inside of the engine, so time to first token still comes from the client-side
+# prober in platform/30-observability/ttft-prober-cronjob.yaml and not from a
+# span. docs/adr/0006's "panels this engine cannot fill" table is unchanged.
+#
+# apiVersion confirmed against the installed CRD rather than carried from
+# memory: `helm template istio/base --version 1.30.3 --include-crds` on
+# 2026-08-19 renders telemetries.telemetry.istio.io with v1 served (storage
+# false) and v1alpha1 served and storage. v1 is used here because it is the
+# stable API and is served. That same rendered schema confirms every field
+# below: spec.selector.matchLabels, spec.tracing[].providers[].name (required,
+# minLength 1), and spec.tracing[].randomSamplingPercentage (number, 0 to 100).
+#
+# > **Untried (2026-08-19):** that an Istio ambient gateway emits spans through
+# > this path at all. No cluster has run it. Ambient mode has no sidecars, and
+# > ztunnel is L4 only, so a workload-to-workload span is genuinely not
+# > available here - but the Gateway API Gateway is a full L7 Envoy, which is
+# > why this selects the gateway and nothing else. Confirm with `bats
+# > tests/smoke/05-observability.bats` after traffic, and if it is empty, check
+# > `istioctl proxy-config bootstrap deploy/llm-istio -n istio-system` for the
+# > tracing cluster before changing anything here.
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: gateway-tracing
+  namespace: istio-system
+spec:
+  # Scoped to the gateway, deliberately. A Telemetry in the root namespace with
+  # no selector applies mesh-wide, which here would mean asking ztunnel and
+  # every workload for spans they cannot produce. istiod sets this label on the
+  # Deployment it generates for a Gateway API Gateway, and
+  # platform/30-observability/podmonitor.yaml selects on the same key.
+  selector:
+    matchLabels:
+      istio.io/gateway-name: llm
+  tracing:
+    - providers:
+        - name: otel-tracing
+      # Everything, because this is a local debugging cluster where a missing
+      # span is worse than a redundant one. This is the number to lower first
+      # if trace volume ever becomes the problem; on a real deployment it would
+      # not be 100.
+      randomSamplingPercentage: 100

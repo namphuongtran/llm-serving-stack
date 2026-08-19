@@ -61,10 +61,26 @@ cannot render with its receivers narrowed to OTLP - its Service template
 dereferences the Jaeger receiver with no guard. `tempo.yaml`'s header carries
 the evidence and the commands that produced it.
 
-**Nothing produces a span yet.** llama.cpp emits none at all (ADR 0005), so
-until gateway tracing is turned on, Tempo is a correctly wired backend with an
-empty database. The pipeline is `producer -> OTel Collector -> Tempo ->
-Grafana`, and only the first arrow is missing.
+**The producer is the gateway, not the engine.** llama.cpp emits no spans at
+all (ADR 0005), so the span comes from the Envoy in front of it:
+`platform/10-istio/telemetry.yaml` turns on trace export for the Gateway, and
+`platform/10-istio/helm/values-istiod.yaml` tells the mesh to send OTLP here.
+The full pipeline is:
+
+```
+Istio Gateway (Envoy) -> OTel Collector -> Tempo -> Grafana
+```
+
+That buys one span per request covering the gateway hop, with the route, the
+status, and the duration. It buys nothing about the inside of the engine, so
+time to first token still comes from the prober CronJob and not from a span.
+
+**Whether it works is untried.** Ambient mode has no sidecars and ztunnel is L4
+only, so the Gateway being a full L7 Envoy is the whole reason this can work at
+all. `tests/smoke/05-observability.bats` asserts it in three steps - the mesh
+knows where to send, the gateway is told to send, and
+`tempo_distributor_spans_received_total` is above zero. The third is the one
+that settles it.
 
 ## Two signals still missing on purpose
 

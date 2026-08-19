@@ -1,4 +1,11 @@
-# Wave 1. profile=ambient, same as platform/10-istio/install.sh.
+# Wave 1. The rendered copy of platform/10-istio/helm/values-istiod.yaml. An
+# Argo CD Application cannot read a values file out of this repository, so the
+# two must change together - grep for otel-collector.observability.
+#
+# This used to be `helm.parameters` with a single profile=ambient entry.
+# meshConfig.extensionProviders is a list of objects, which parameters cannot
+# express, so it became valuesObject, the same form
+# clusters/local-kind/apps/30-observability.yaml already uses.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -14,8 +21,14 @@ spec:
     chart: istiod
     targetRevision: 1.30.3
     helm:
-      parameters:
-        - { name: profile, value: ambient }
+      valuesObject:
+        profile: ambient
+        meshConfig:
+          extensionProviders:
+            - name: otel-tracing
+              opentelemetry:
+                service: otel-collector.observability.svc.cluster.local
+                port: 4317
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     syncOptions: [CreateNamespace=true]

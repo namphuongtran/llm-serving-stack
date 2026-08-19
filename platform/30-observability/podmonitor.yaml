@@ -71,3 +71,31 @@ spec:
     - portNumber: 15020
       path: /stats/prometheus
       interval: 15s
+---
+# Tempo's own metrics, added 2026-08-19 with the gateway tracing change. Tempo
+# is the one component here whose job cannot be checked by looking at it: a
+# trace backend with no traces and a trace backend nobody is sending to look
+# identical from the outside.
+#
+# tempo_distributor_spans_received_total is what tells them apart, and
+# tests/smoke/05-observability.bats queries it. Without this PodMonitor that
+# question can only be answered by exec-ing into a pod.
+#
+# Port 3200 is `server.http_listen_port` in tempo.yaml's config, and the same
+# port the readiness probe uses for /ready. portNumber rather than a port name,
+# for the reason spelled out on the istio-gateway PodMonitor above - except
+# here the port IS declared, by tempo.yaml itself, as containerPort 3200 named
+# http. So this one is not a guess about somebody else's pod spec.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: tempo
+  namespace: observability
+spec:
+  namespaceSelector: { matchNames: [observability] }
+  selector:
+    matchLabels: { app: tempo }
+  podMetricsEndpoints:
+    - portNumber: 3200
+      path: /metrics
+      interval: 15s

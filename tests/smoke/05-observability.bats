@@ -157,3 +157,44 @@ start_grafana_portforward() {
   [ "$status" -eq 0 ]
   [[ "$output" == *200* ]]
 }
+
+# Added 2026-08-19 with the gateway tracing change. Three tests, in the order a
+# span travels: is the mesh told where to send, is the gateway told to send, did
+# anything arrive.
+
+# Reads the rendered MeshConfig out of the cluster rather than the values file
+# in git. This repository has been bitten twice by a values key that was set and
+# never took effect, and both were found only by reading rendered output; see
+# CLAUDE.md's evidence rules.
+@test "the mesh is configured to export traces to the collector" {
+  run k -n istio-system get cm istio -o jsonpath='{.data.mesh}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"otel-tracing"* ]]
+  [[ "$output" == *"otel-collector.observability"* ]]
+}
+
+# The provider above is a destination. This is what makes the gateway use it.
+@test "the gateway is told to produce traces" {
+  run k -n istio-system get telemetry gateway-tracing -o jsonpath='{.spec.tracing[0].providers[0].name}'
+  [ "$status" -eq 0 ]
+  [ "$output" = "otel-tracing" ]
+}
+
+# The end of the pipeline, and the only test here that can prove it works.
+# tempo_distributor_spans_received_total comes from Tempo's own /metrics, which
+# platform/30-observability/podmonitor.yaml scrapes.
+#
+# This needs traffic to have passed the gateway. The CI observability job runs
+# tests/contract/ before this suite for that reason.
+#
+# > **Untried (2026-08-19):** whether this passes. It is the assertion that
+# > settles whether an Istio ambient gateway emits spans through this path at
+# > all - see the Untried marker in platform/10-istio/telemetry.yaml. If it
+# > fails while the two tests above pass, the wiring is right and the ambient
+# > gateway is not producing, which is a finding to record rather than a test
+# > to weaken.
+@test "spans are reaching tempo" {
+  start_prom_portforward
+  run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode 'query=sum(tempo_distributor_spans_received_total) > 0' | jq -r '.data.result | length'"
+  [ "$output" -ge 1 ]
+}

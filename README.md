@@ -151,10 +151,15 @@ than a number nobody has measured. Find those with:
 grep -rnE 'Untried \(20[0-9]{2}-' . --exclude-dir=.git --exclude-dir=docs/superpowers
 ```
 
-which returned **8** on 2026-08-19, across six files: this one,
-`platform/12-kyverno/install.sh`, `platform/30-observability/podmonitor.yaml`,
+which returned **10** on 2026-08-19, across seven files: this one,
+`platform/10-istio/telemetry.yaml`, `platform/12-kyverno/install.sh`,
+`platform/30-observability/podmonitor.yaml`,
 `platform/30-observability/tempo.yaml`, `tests/smoke/05-observability.bats`, and
 three in `.github/workflows/ci.yml`.
+
+The count rising is the expected shape of this work, not a regression. Every
+component added since 2026-08-19 has been written and never run, so each one
+brings its own marker naming the command that would settle it.
 
 The date digits in that pattern are not decoration. Without them the command
 matches the line that documents it, and reports 7. The `Unmeasured` pattern

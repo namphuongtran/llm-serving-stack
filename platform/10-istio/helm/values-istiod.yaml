@@ -1,0 +1,45 @@
+# Helm values for the istiod chart. Two things are set: the ambient profile,
+# which install.sh previously passed as `--set profile=ambient`, and the
+# OpenTelemetry tracing provider.
+#
+# WHY THIS FILE IS IN A SUBDIRECTORY, and must stay in one.
+#
+# clusters/local-kind/apps/10-istio-gateway.yaml sources `platform/10-istio` as
+# an Argo CD *directory* source with `recurse: false`, so every `*.yaml` file
+# sitting directly in that directory is applied to the cluster as a manifest.
+# A Helm values file is not a Kubernetes object, so putting it there would make
+# that Application fail to sync. `recurse: false` is exactly what keeps this
+# subdirectory invisible to it. Do not move this file up one level.
+#
+# The declarative twin of this file is the `helm.valuesObject` block in
+# clusters/local-kind/apps/10-istiod.yaml. An Argo CD Application cannot read a
+# values file out of this repository, so the two must change together - the
+# same accepted duplication versions.yaml describes for rendered digests.
+
+profile: ambient
+
+# extensionProviders is not in the istiod chart's own values.yaml, so it was
+# not obvious this would work. Confirmed by rendering rather than by reading
+# docs, on 2026-08-19:
+#   helm template istiod istio/istiod --version 1.30.3 -n istio-system \
+#     -f platform/10-istio/helm/values-istiod.yaml
+# and reading `.data.mesh` out of the resulting ConfigMap/istio, which carries
+# the extensionProviders block below verbatim. meshConfig is a pass-through.
+#
+# The service address is Service/otel-collector in namespace observability,
+# port 4317 named otlp. That name is not a guess either: it comes from
+# rendering the collector chart with this repository's own values
+# (platform/30-observability/otel-collector.yaml sets fullnameOverride:
+# otel-collector) and reading the rendered Service.
+#
+# A cross-layer dependency worth naming: Istio is sync wave 1 and
+# observability is wave 3, so at first boot the gateway will be configured to
+# export spans to a Service that does not exist yet. Envoy treats an
+# unreachable trace collector as a dropped span, not a failed request, so this
+# degrades to "no traces for the first minute" rather than to an outage.
+meshConfig:
+  extensionProviders:
+    - name: otel-tracing
+      opentelemetry:
+        service: otel-collector.observability.svc.cluster.local
+        port: 4317
