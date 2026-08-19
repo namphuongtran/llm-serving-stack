@@ -1,0 +1,49 @@
+# Retries are not part of core Gateway API (no field on HTTPRouteRule), and
+# this stays Kuadrant-independent on purpose: Kuadrant's AuthPolicy and
+# TokenRateLimitPolicy (security/oidc/) govern who may call and how much,
+# not how the gateway behaves toward a failing backend. Istio's own
+# extension point for this is a VirtualService attached to the same Gateway
+# API Gateway, referenced by "<namespace>/<name>" in `spec.gateways` — the
+# documented way to add Istio-only route features (retries, fault
+# injection, mirroring) on top of a Gateway API `Gateway`/`HTTPRoute` pair.
+#
+# CAUTION, recorded rather than silently assumed: Envoy selects among the
+# HTTPRoute's weighted backendRefs (ornith-9b-predictor:100,
+# fallback-small-predictor:0) by fixed probability, on the first attempt and
+# on every retry alike. A permanently zero-weight cluster should, by that
+# documented behaviour, never be chosen by weighted selection regardless of
+# whether the primary has healthy endpoints. No cluster exists here to
+# confirm or refute that against the real Envoy build these charts install.
+# If the "primary has no replicas" test in tests/smoke/08-availability.bats
+# comes back 503 on real hardware, this is why, and the fix is a routing
+# mechanism that changes cluster selection on primary health (an Envoy
+# aggregate cluster via EnvoyFilter, or restructuring both models as
+# subsets of one Service with outlier detection) rather than a retry
+# attempt count.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ornith-9b-retry
+  namespace: llm
+spec:
+  hosts:
+    - llm.localtest.me
+  gateways:
+    - istio-system/llm
+  http:
+    - match:
+        - uri: { prefix: /v1 }
+      route:
+        - destination:
+            host: ornith-9b-predictor.llm.svc.cluster.local
+            port: { number: 80 }
+          weight: 100
+        - destination:
+            host: fallback-small-predictor.llm.svc.cluster.local
+            port: { number: 80 }
+          weight: 0
+      retries:
+        attempts: 3
+        perTryTimeout: 30s
+        retryOn: 5xx,connect-failure,refused-stream,unavailable
+      timeout: 600s

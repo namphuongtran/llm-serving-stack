@@ -5,8 +5,25 @@ metadata:
   namespace: llm
 spec:
   predictor:
+    minReplicas: 2
+    # Streaming answers run for tens of seconds. The pod must finish them
+    # before Kubernetes kills it, not just stop accepting new ones.
+    terminationGracePeriodSeconds: 120
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            serving.kserve.io/inferenceservice: ornith-9b
     containers:
       - name: kserve-container
+        lifecycle:
+          preStop:
+            exec:
+              # Let the gateway notice the endpoint is going away before the
+              # process stops accepting the stream it is already writing.
+              command: ["/bin/sleep", "15"]
         volumeMounts:
           - { name: models, mountPath: /mnt/models }
     initContainers:

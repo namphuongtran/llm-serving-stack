@@ -31,3 +31,21 @@ model:
   # 641675b356a4463677a02a0d703f7b571b39f0b747fbd270b379c848edc29e84,
   # verified the same two ways on 2026-08-19. Kept here as a fallback if the
   # first-party repository is ever removed or renamed again.
+  # A small model pinned ahead of Task 13. Task 13's CI overlay will build
+  # around this same pin so a 4 vCPU runner can finish; Task 10 (this file's
+  # other consumer) reuses it as the failover target behind ornith-9b, since
+  # a weaker answer beats no answer. Real repository, real filename, no
+  # placeholder.
+  ci:
+    hf_repo: "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
+    hf_file: "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    # sha256 obtained two ways on 2026-08-19, both agree:
+    #   1. `curl -s "https://huggingface.co/api/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF?blobs=true"`
+    #      -> .siblings[] where rfilename == qwen2.5-0.5b-instruct-q4_k_m.gguf -> .lfs.sha256
+    #   2. `curl -sI "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"`
+    #      -> x-linked-etag response header
+    # Neither command downloaded the file itself.
+    sha256: "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+    # From the same ?blobs=true response: .siblings[].size = 491400032 bytes,
+    # i.e. 491400032 / 1e9. Qwen2.5-0.5B-Instruct: about 0.5B parameters.
+    approx_size_gb: 0.49

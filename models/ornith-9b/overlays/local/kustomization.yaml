@@ -6,5 +6,8 @@ resources:
   - ../../../../runtimes/llamacpp-arm64
   - httproute.yaml
   - scaledobject.yaml
+  - pdb.yaml
+  - fallback.yaml
+  - retry-policy.yaml
 patches:
   - path: patch-resources.yaml

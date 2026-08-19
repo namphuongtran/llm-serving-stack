@@ -1,0 +1,63 @@
+# The failover target behind ornith-9b. The spec's failure table promises
+# that when the primary engine is unavailable, a weaker answer beats no
+# answer; this InferenceService is that weaker answer. Same runtime
+# (llamacpp-arm64), a 0.5B model instead of a 9B one, so it starts fast and
+# fits comfortably alongside the primary's two replicas.
+#
+# Values below come from models/ornith-9b/base/model.yaml under model.ci.
+# Written in directly, not templated, for the same reason the primary's
+# fetch-weights env is written in directly: a sed step nobody runs would
+# otherwise leave a placeholder in the committed file.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: fallback-small
+  namespace: llm
+  annotations:
+    serving.kserve.io/deploymentMode: RawDeployment
+spec:
+  predictor:
+    minReplicas: 1
+    model:
+      modelFormat: { name: gguf }
+      runtime: llamacpp-arm64
+      # Same reasoning as ornith-9b/base/inferenceservice.yaml: left empty so
+      # KServe does not inject its own storage-initializer (risk R1).
+      storageUri: ""
+      args:
+        - --alias
+        - fallback-small
+    containers:
+      - name: kserve-container
+        resources:
+          # A 0.5B Q4 model needs a fraction of the primary's footprint.
+          requests: { cpu: "1", memory: 1Gi }
+          limits: { cpu: "2", memory: 2Gi }
+        volumeMounts:
+          - { name: models, mountPath: /mnt/models }
+    initContainers:
+      - name: fetch-weights
+        # Same pinned curl image as the primary's fetch-weights container;
+        # see versions.yaml (images.curl) for how the digest was resolved.
+        image: curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -eu
+            command -v sha256sum >/dev/null || { echo "sha256sum missing in init image" >&2; exit 1; }
+            if [ -f /mnt/models/model.gguf ]; then
+              echo "weights already present"; exit 0
+            fi
+            curl -fL --retry 3 -o /mnt/models/model.gguf \
+              "https://huggingface.co/${HF_REPO}/resolve/main/${HF_FILE}"
+            echo "${SHA256}  /mnt/models/model.gguf" | sha256sum -c -
+        env:
+          # Values come from models/ornith-9b/base/model.yaml, model.ci.
+          - { name: HF_REPO, value: "Qwen/Qwen2.5-0.5B-Instruct-GGUF" }
+          - { name: HF_FILE, value: "qwen2.5-0.5b-instruct-q4_k_m.gguf" }
+          - { name: SHA256, value: "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db" }
+        volumeMounts:
+          - { name: models, mountPath: /mnt/models }
+    volumes:
+      - name: models
+        emptyDir: { sizeLimit: 2Gi }

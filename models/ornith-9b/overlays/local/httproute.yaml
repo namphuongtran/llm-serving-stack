@@ -12,6 +12,10 @@ spec:
       backendRefs:
         - name: ornith-9b-predictor
           port: 80
+          weight: 100
+        - name: fallback-small-predictor
+          port: 80
+          weight: 0        # zero weight: reached only through retry, not load split
       timeouts:
         # Streaming answers run for tens of seconds. The default is far too
         # short and truncates responses mid-sentence.

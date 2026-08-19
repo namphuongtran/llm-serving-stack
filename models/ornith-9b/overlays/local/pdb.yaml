@@ -1,0 +1,18 @@
+# Floor for voluntary disruption (node drain, rolling upgrade of the node
+# pool). With minReplicas: 2 on the InferenceService (patch-resources.yaml)
+# and this budget, at most one of the two ornith-9b-predictor pods can be
+# evicted at a time; the other keeps answering.
+#
+# The ScaledObject's minReplicaCount (scaledobject.yaml) must never fall
+# below this budget's minAvailable, or KEDA could scale down to a replica
+# count this budget cannot protect.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ornith-9b
+  namespace: llm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: ornith-9b

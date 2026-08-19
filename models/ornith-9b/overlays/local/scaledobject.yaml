@@ -24,7 +24,11 @@ metadata:
 spec:
   scaleTargetRef:
     name: ornith-9b-predictor
-  minReplicaCount: 1        # not zero: cold start is dominated by weight loading
+  # 2, not 1: the PodDisruptionBudget (pdb.yaml) has minAvailable: 1, and
+  # KEDA must never scale below the floor that budget can protect. Cold
+  # start is also dominated by weight loading, which is the older reason
+  # this was never zero.
+  minReplicaCount: 2
   maxReplicaCount: 3
   pollingInterval: 15
   cooldownPeriod: 120
