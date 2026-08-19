@@ -45,3 +45,8 @@ docs/superpowers/
 # the claim it qualifies, findable with
 # `grep -rn '\*\*Unmeasured (20' . --exclude-dir=.git --exclude-dir=docs/superpowers`.
 docs/UNVERIFIED.md
+
+# Byte-compiled Python, produced by `python3 -m py_compile` during checks.
+# Two of these were committed by accident in 67fa79e.
+__pycache__/
+*.pyc
