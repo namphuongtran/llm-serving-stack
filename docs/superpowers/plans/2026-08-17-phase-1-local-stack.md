@@ -1944,10 +1944,10 @@ cd "$(dirname "$0")/../.."
 
 CHART="$(yq -r '.kuadrant.operator_chart' versions.yaml)"
 CHART_VERSION="$(yq -r '.kuadrant.operator_chart_version' versions.yaml)"
-for v in CHART CHART_VERSION; do
-  val="${!v}"
-  [ -n "$val" ] && [ "$val" != "null" ] || { echo "kuadrant.${v,,} not pinned in versions.yaml" >&2; exit 1; }
-done
+# Checked separately rather than in a loop: ${v,,} is bash 4 only and macOS
+# ships bash 3.2, so lowercasing a variable name inside the loop is not portable.
+[ -n "$CHART" ] && [ "$CHART" != "null" ] || { echo "kuadrant.operator_chart not pinned in versions.yaml" >&2; exit 1; }
+[ -n "$CHART_VERSION" ] && [ "$CHART_VERSION" != "null" ] || { echo "kuadrant.operator_chart_version not pinned in versions.yaml" >&2; exit 1; }
 
 # --version is not optional here. Without it helm silently installs whatever is
 # newest, which loses the pin without producing an error.
