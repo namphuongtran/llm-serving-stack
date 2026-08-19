@@ -36,9 +36,16 @@ spec:
       # OMITTED, not set to "". KServe's guard is `sourceURI != nil`
       # (pkg/controller/v1beta1/inferenceservice/components/predictor.go:116
       # at tag v0.20.0, read 2026-08-19), so an empty string is a non-nil
-      # pointer and would still trigger storage-initializer injection - which
-      # adds a second volumeMount at /mnt/models under a different volume
-      # name and makes the pod unschedulable. Only the absent key is nil.
+      # pointer and would still trigger storage-initializer injection. Only the
+      # absent key is nil.
+      #
+      # This said the injection "makes the pod unschedulable". Corrected
+      # 2026-08-20 on two counts. The observed failure was at pod CREATION, not
+      # scheduling: `spec.containers[0].volumeMounts[2].mountPath: Invalid value:
+      # "/mnt/models": must be unique`. And that particular collision is gone
+      # anyway, because our volume moved to /models. The reason to keep omitting
+      # storageUri is that the initializer expects a model repository and this
+      # overlay fetches one verified GGUF file itself - see base/inferenceservice.yaml.
       args:
         - --alias
         - fallback-small

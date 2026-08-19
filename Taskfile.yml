@@ -147,7 +147,17 @@ tasks:
       # while the index does not; on this repository's volume `chmod +x` alone
       # did not update the index and `git update-index --chmod=+x` was needed.
       # A clone reads the index, so the index is what must be right.
-      - '[ "$(git ls-files -s ''*.sh'' | awk ''$1 != "100755"'' | wc -l)" -eq 0 ]'
+      # Two things this must do that the first version did not. It must FAIL when
+      # git is unavailable or we are outside a work tree - `wc -l` prints 0 for
+      # empty input, so any upstream failure read as "no offenders". And it must
+      # name the file, because the whole point is that a reader cannot see a file
+      # mode; the old form printed only the pipeline and left them to rerun it by
+      # hand. Both confirmed by running, 2026-08-20.
+      #
+      # No colon-space anywhere in these strings, per the go-task trap this file
+      # documents at the top.
+      - git rev-parse --is-inside-work-tree > /dev/null
+      - 'bad="$(git ls-files -s ''*.sh'' | awk ''$1 != "100755" {print $4}'')"; [ -z "$bad" ] || { printf ''not mode 100755 in the git index, run git update-index --chmod=+x on\n%s\n'' "$bad" >&2; exit 1; }'
 
   policy:
     desc: Run admission policies locally, the same ones the cluster enforces

@@ -116,7 +116,13 @@ kserve:
   # The tag carries the digest because that is what the chart renders into the
   # ConfigMap: `image` and `tag` are concatenated, so putting the digest in the
   # tag produces the repository's standard `name:tag@sha256:...` form. Verified
-  # by rendering the chart and reading `.data.agent | .image` out of the output.
+  # by rendering the chart and reading the image out of the output. Note the
+  # `fromjson`: `.data.agent` is a JSON-encoded STRING, so indexing it directly
+  # fails with "Cannot index string with string". The working form is
+  #   helm template kserve-resources oci://ghcr.io/kserve/charts/kserve-resources \
+  #     --version v0.20.0 -n kserve -f platform/20-kserve/values-kserve.yaml \
+  #     | yq -r 'select(.kind=="ConfigMap" and .metadata.name=="inferenceservice-config") | .data.agent' \
+  #     | jq -r .image
   #
   # DUPLICATED: clusters/local-kind/apps/20-kserve.yaml carries the same two
   # lines inline, because an Argo CD Application cannot read this file.

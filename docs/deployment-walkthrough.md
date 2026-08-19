@@ -16,9 +16,17 @@ real request**: 401 without a token, 200 with a JWT from Keycloak, and a streami
 chat completion. See [Where it got to](#where-it-got-to).
 
 The platform layers, from an empty machine to Argo CD running, took **9 minutes
-33 seconds** and settled at **7.0 GiB, 29% of what Docker was given**. With both
-models loaded it reached **17811 MiB, 75%**. Memory was never the limit, but the
+59 seconds** and settled at **7.0 GiB, 29% of what Docker was given**. With both
+models loaded it reached **17855 MiB, 75%**. Memory was never the limit, but the
 model layer is most of it.
+
+Both of those numbers were wrong when this document was first written, and the
+corrections are recorded rather than quietly applied. It said 9m33s, which is 573
+seconds; the `seconds` column in `docs/deployment-log.tsv` sums to 599 for those
+layers, and no subset of that column sums to 573 at all. It said 17811 MiB, which
+appears in no row of the log. Both errors came from transcribing what the terminal
+printed instead of re-deriving from the tracked log, which is the one thing this
+repository's evidence rule exists to prevent.
 
 Getting the model layer up took three fixes, each only visible after the previous
 one landed. All three are now in the repository, the last one as
@@ -81,19 +89,29 @@ memory across the three node containers, so it includes the cluster itself.
 | 9 | `observability` | 126 | 46 | 5737 MiB | 24 |
 | 10 | `keda` | 47 | 50 | 6214 MiB | 26 |
 | 11 | `argocd` | 44 | 59 | 7043 MiB | 29 |
-| 12 | `model` | see below | 62 | 17811 MiB | 75 |
-| 13 | `security` | 0 | 60 | 17811 MiB | 75 |
+| 12 | `model` | see below | 57 | 7089 MiB | 29 |
+| 13 | `security` | 0 | 60 | 17855 MiB | 75 |
 
-Two layers dominate: `kuadrant` and `observability` are 237 of the 573 seconds.
-`observability` is also the largest single jump in memory, 1348 MiB, which is
-expected: it brings Prometheus, Grafana, Alertmanager, node-exporter,
+Two layers dominate: `kuadrant` and `observability` are 237 of the 599 seconds.
+Among the platform layers `observability` is also the largest single jump in
+memory, 1348 MiB, which is expected: it brings Prometheus, Grafana, Alertmanager, node-exporter,
 kube-state-metrics, the OTel Collector, Pushgateway, and Tempo.
 
 The model layer is the expensive one, and the prediction written here before it
 ran was wrong in the right direction. It said to expect 16 GiB of requests on top
 of 7.0 GiB, against 23.2 GiB available. Measured: the whole cluster reached
-17811 MiB, 75%, with both models resident. Requests are not resident memory, which
+17855 MiB, 75%, with both models resident. Requests are not resident memory, which
 is why the estimate overshot.
+
+Read row 12 carefully. Its 7089 MiB is the log's own `model` row, written two
+seconds after `kubectl apply` returned, long before either model had finished
+downloading its weights. The 17855 MiB in row 13 is the first sample taken after
+both were resident, so it is the honest figure for "the model layer loaded". The
+jump between the two rows, about 10.7 GiB, is what the models actually cost and it
+is larger than any platform layer's.
+
+Re-measured 2026-08-20 with both models still resident, after a Docker Desktop
+restart: 17576 MiB, 74%. That is a second sample, not a correction of the first.
 
 Its `seconds` column is left as "see below" on purpose: the step's own `kubectl
 apply` returns in 2 seconds, and the real cost is the weight download and model
@@ -206,7 +224,7 @@ the wrong reason. It is now defined in `tests/lib/helpers.bash`.
 | Both `InferenceService` objects | `Ready=True` |
 
 llama.cpp logged `model loaded` and `listening on http://0.0.0.0:8080`, loading
-from `/models/model.gguf`. Memory settled at **17811 MiB, 75%** of the 23.2 GiB
+from `/models/model.gguf`. Memory settled at **17855 MiB, 75%** of the 23.2 GiB
 Docker was given, with both models resident. The guard threshold is 85%, so it
 fits but not with much room.
 

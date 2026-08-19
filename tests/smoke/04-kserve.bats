@@ -1,4 +1,11 @@
-setup() { load '../lib/helpers'; }
+setup() {
+  load '../lib/helpers'
+  # Every negative assertion in this file is `[ "$status" -ne 0 ]`, which any
+  # kubectl failure satisfies. With Docker down on 2026-08-20, three of them
+  # passed with no cluster at all. This guard makes that impossible; each of the
+  # three also now asserts its own cause. See require_cluster in ../lib/helpers.
+  require_cluster
+}
 
 @test "KServe CRDs exist" {
   for crd in inferenceservices.serving.kserve.io servingruntimes.serving.kserve.io clusterservingruntimes.serving.kserve.io; do
@@ -16,6 +23,12 @@ setup() { load '../lib/helpers'; }
 @test "Knative is NOT installed" {
   run k get crd services.serving.knative.dev
   [ "$status" -ne 0 ]
+  # Assert it is ABSENT, not merely that the command failed. A wrong context, an
+  # RBAC denial, or an unreachable API server all satisfy `-ne 0`; only NotFound
+  # means Knative is actually not installed. Confirmed 2026-08-20 that this test
+  # passed against a dead cluster before the check was added.
+  [[ "$output" == *NotFound* || "$output" == *"not found"* ]] \
+    || fail "not a NotFound, so this proves nothing about Knative: $output"
 }
 
 @test "default deployment mode is RawDeployment" {
@@ -55,10 +68,15 @@ setup() { load '../lib/helpers'; }
 }
 
 @test "no KServe-generated HTTPRoute exists for the model" {
-  run bash -c "kubectl --context $KUBECTL_CONTEXT -n llm get httproute ornith-9b"
-  [ "$status" -ne 0 ]
-  run bash -c "kubectl --context $KUBECTL_CONTEXT -n llm get httproute ornith-9b-predictor"
-  [ "$status" -ne 0 ]
+  # Same reasoning as "Knative is NOT installed" above: NotFound is the only
+  # failure that means what this test claims. Both names are checked, and both
+  # must be absent for the reason stated rather than for any reason.
+  for name in ornith-9b ornith-9b-predictor; do
+    run k -n llm get httproute "$name"
+    [ "$status" -ne 0 ] || fail "KServe generated an HTTPRoute named $name, which disableIngressCreation should have prevented"
+    [[ "$output" == *NotFound* || "$output" == *"not found"* ]] \
+      || fail "httproute/$name lookup failed for a reason other than absence: $output"
+  done
 }
 
 @test "the admission webhook rejects an invalid InferenceService" {
@@ -70,4 +88,10 @@ spec:
   predictor: {}
 YAML
   [ "$status" -ne 0 ]
+  # The whole point of this test is that a WEBHOOK rejected it. Before
+  # 2026-08-20 it asserted only that apply failed, so it reported success with no
+  # webhook, no CRD, and no cluster - the single most misleading pass in the
+  # suite. The message must name the admission webhook.
+  [[ "$output" == *"admission webhook"* ]] \
+    || fail "apply failed, but not at admission, so the webhook is unproven: $output"
 }

@@ -184,24 +184,26 @@ than a number nobody has measured. Find those with:
 git ls-files -z | xargs -0 grep -nE 'Untried \(20[0-9]{2}-'
 ```
 
-which returned **12** on 2026-08-19, across eight files: this one,
+which returned **13** on 2026-08-20, across eight files: this one,
 `docs/deployment-walkthrough.md`, `platform/10-istio/telemetry.yaml`,
-`platform/12-kyverno/install.sh`,
-`platform/30-observability/podmonitor.yaml`,
+`platform/12-kyverno/install.sh`, `tests/contract/01-openai-api.bats`, two in
 `platform/30-observability/tempo.yaml`, two in
 `tests/smoke/05-observability.bats`, and four in `.github/workflows/ci.yml`.
 
-It moved twice on 2026-08-19. From 10 to 11 when `actions/checkout` went v4 to
-v7, because v7 needs the node24 runtime and no local command can prove these
-runners have it. Then to 12 when the stack was first run layer by layer: the
-CoreDNS manifest that run produced has only ever been applied by hand, never by
-Argo CD.
+It moved three times across two days, and every move is the shape this is
+supposed to take rather than a regression. From 10 to 11 when `actions/checkout`
+went v4 to v7, because v7 needs the node24 runtime and no local command can prove
+these runners have it. To 12 when the stack was first run layer by layer, because
+the CoreDNS manifest that run produced had only ever been applied by hand. To 13
+on 2026-08-20, when a review pass replaced two claims that had been asserted
+without a mutation to back them, in `tempo.yaml` and the contract suite.
 
-The same day removed two markers that running settled, which is the shape this
-is supposed to take. `platform/30-observability/tempo.yaml` no longer wonders
-whether Tempo 3.0.3 starts, because it does, and
-`platform/30-observability/podmonitor.yaml` no longer wonders whether the gateway
-pod declares port 15020, because it does. Both were replaced by the observation.
+The same two days RETIRED three markers that running settled, and one that was
+simply wrong. `tempo.yaml` no longer wonders whether Tempo 3.0.3 starts, because
+it does. `podmonitor.yaml` no longer wonders whether the gateway pod declares
+port 15020 or whether Prometheus scrapes it, because both were observed; its
+second marker had also contradicted `docs/deployment-walkthrough.md` outright,
+and the walkthrough was right.
 
 The count rising is the expected shape of this work, not a regression. Every
 component added since 2026-08-19 has been written and never run, so each one
@@ -223,14 +225,17 @@ record instead. Keep the form available: it is the honest marker for a finding
 that is understood but not yet fixed.
 
 The date digits in that pattern are not decoration. Without them the pattern
-matches the line that documents the marker form, `CLAUDE.md:176`, so it reports
-12 instead of 11. The `Unmeasured` pattern above dodges the same trap a
+matches the line that documents the marker form, `CLAUDE.md:199`, so it reports
+14 instead of 13. It cited `CLAUDE.md:176` until 2026-08-20, which is a different
+bullet in the same section: that line is the "a number without the date it was
+measured is invalid" rule, not the marker form. A citation that resolves and does
+not hold is the exact defect this section exists to warn about. The `Unmeasured` pattern above dodges the same trap a
 different way, by requiring the `**` a real marker carries.
 
 This paragraph said "reports 7" until 2026-08-19. That number was never
-producible: dropping the digits can only ADD matches, so a number below 11 was
-wrong in direction as well as in size. Re-measured by diffing the two greps over
-tracked files, which shows exactly one added line.
+producible: dropping the digits can only ADD matches, so a number below the real
+count was wrong in direction as well as in size. Re-measured by diffing the two
+greps over tracked files, which shows exactly one added line.
 
 Two details in that pattern are deliberate, and both were found by running it
 rather than by reasoning about it. It matches the marker form `**Unmeasured (`

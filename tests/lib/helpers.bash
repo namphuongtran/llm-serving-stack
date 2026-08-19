@@ -6,14 +6,37 @@ k() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
 
 # fail <message> — abort the current test with a message that names the cause.
 #
-# Added 2026-08-19. bats core does not provide `fail`; it comes from the
-# separate bats-assert library, which this repository does not vendor and which
-# is not installed here (`ls /opt/homebrew/lib/bats-*` lists only bats' own
+# Added 2026-08-19. bats core does not provide `fail`; it is defined in
+# bats-SUPPORT (src/error.bash), not bats-assert, which only depends on it.
+# Neither is vendored here and neither is installed (`ls /opt/homebrew/lib/bats-*` lists only bats' own
 # internals). So a bare `fail "..."` would have died with "command not found",
 # which fails the test for the wrong reason and prints the wrong cause. That is
 # the same defect class this helper exists to fix, so it is defined here rather
 # than assumed.
 fail() { printf '%s\n' "$1" >&2; return 1; }
+
+# require_cluster — abort the test if the API server cannot be reached.
+#
+# Added 2026-08-20, after Docker went down mid-review and turned into a free
+# whole-cluster mutation test. With the API server unreachable,
+#   bats tests/smoke/00-cluster.bats tests/smoke/01-wave0.bats \
+#        tests/smoke/02-gateway.bats tests/smoke/03-identity.bats \
+#        tests/smoke/04-kserve.bats
+# gave 4 passes and 22 failures. Only one of those four passes was legitimate
+# ("versions.yaml has no empty pins", which needs no cluster). The other three
+# were 04-kserve.bats tests 20, 25, and 26, every one of them a bare
+# `[ "$status" -ne 0 ]` satisfied by kubectl failing to connect. Test 26 is the
+# worst: it claims the KServe admission webhook rejects a malformed
+# InferenceService, and it passed with no webhook, no CRD, and no cluster.
+#
+# Asserting the cause in each test is the local fix, and the ones above now do
+# that too. This is the systemic fix: any suite that calls it in `setup()` can
+# no longer report success when there is nothing to test. Call it in suites whose
+# assertions are about cluster state.
+require_cluster() {
+  k version --request-timeout=10s >/dev/null 2>&1 \
+    || fail "cannot reach the API server at context $KUBECTL_CONTEXT; every negative assertion below would pass for the wrong reason"
+}
 
 # wait_for <seconds> <description> <command...>
 wait_for() {

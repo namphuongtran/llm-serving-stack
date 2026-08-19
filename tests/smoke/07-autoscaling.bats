@@ -1,5 +1,10 @@
 setup() {
   load '../lib/helpers'
+  # Cluster-state assertions below, so a suite that cannot reach the API server
+  # must fail rather than report anything. Added 2026-08-20: with Docker down,
+  # bare `[ "$status" -ne 0 ]` assertions passed for the wrong reason. See
+  # require_cluster in ../lib/helpers.
+  require_cluster
   BASE="http://llm.localtest.me"
 }
 

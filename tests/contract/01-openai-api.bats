@@ -1,5 +1,10 @@
 setup() {
   load '../lib/helpers'
+  # Cluster-state assertions below, so a suite that cannot reach the API server
+  # must fail rather than report anything. Added 2026-08-20: with Docker down,
+  # bare `[ "$status" -ne 0 ]` assertions passed for the wrong reason. See
+  # require_cluster in ../lib/helpers.
+  require_cluster
   BASE="http://llm.localtest.me"
   TOKEN="$(get_token llm-tier-pro)"
   AUTH="authorization: Bearer $TOKEN"
@@ -68,13 +73,41 @@ setup() {
   # Name the series, do not count matches of a loose pattern. `grep -cE
   # 'requests|tokens'` matched `# HELP` and `# TYPE` comment lines too, so any
   # engine exposing any Prometheus output passed a test called "the minimum
-  # required series". These three are the ones
-  # platform/30-observability/recording-rules.yaml actually consumes, so they
-  # are the real contract.
-  for series in llamacpp:requests_deferred \
-                llamacpp:tokens_predicted_total \
-                llamacpp:prompt_tokens_total; do
-    printf '%s\n' "$output" | grep -q "^${series}" \
+  # required series".
+  #
+  # DERIVED, not hardcoded, and that matters here more than anywhere else in the
+  # repository. This is tests/contract/, whose whole job per CLAUDE.md boundary 2
+  # is to keep everything above the engine engine-INDEPENDENT. Two earlier
+  # versions of this block failed that on their own terms: the first listed three
+  # `llamacpp:` names and claimed they were "the ones recording-rules.yaml
+  # actually consumes" (it consumes seven), and the second listed all seven -
+  # which fixed the count and made the engine-independence problem worse, because
+  # a vLLM predictor emitting `vllm:*` would then fail a test that is not about
+  # vLLM.
+  #
+  # The list is now read out of platform/30-observability/recording-rules.yaml at
+  # run time: every `<prefix>:<name>` series it references that is not already
+  # normalised into the `llmstack:` namespace is, by definition, a raw engine
+  # series the rules depend on. Swap the engine and its own rules supply their own
+  # names, with no edit here. Returns seven today, all `llamacpp:`.
+  #
+  # This asserts them at the ENGINE. tests/smoke/05-observability.bats asserts the
+  # same set through Prometheus, which cannot tell "the engine renamed a series"
+  # from "the scrape broke".
+  required="$(grep -oE '[a-z_]+:[a-z_]+' platform/30-observability/recording-rules.yaml \
+              | grep -v '^llmstack:' | sort -u)"
+  [ -n "$required" ] || fail "derived no engine series from recording-rules.yaml; the pattern or the file changed"
+
+  # `[ {]` after the name so a prefix cannot match a longer series:
+  # llamacpp:requests_deferred must not be satisfied by a hypothetical
+  # llamacpp:requests_deferred_total.
+  #
+  # > **Untried (2026-08-20):** that all seven appear in this engine's /metrics.
+  # > Three were read off a live pod on 2026-08-19; the other four come from the
+  # > recording rules and have never been read out of the engine. If one is absent
+  # > this fails and names it, which is the outcome to want.
+  for series in $required; do
+    printf '%s\n' "$output" | grep -qE "^${series}[ {]" \
       || fail "missing required series ${series} in /metrics"
   done
 }

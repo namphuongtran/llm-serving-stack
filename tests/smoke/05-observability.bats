@@ -1,5 +1,10 @@
 setup() {
   load '../lib/helpers'
+  # Cluster-state assertions below, so a suite that cannot reach the API server
+  # must fail rather than report anything. Added 2026-08-20: with Docker down,
+  # bare `[ "$status" -ne 0 ]` assertions passed for the wrong reason. See
+  # require_cluster in ../lib/helpers.
+  require_cluster
   PROM="http://127.0.0.1:9090"
 }
 
@@ -69,8 +74,12 @@ start_grafana_portforward() {
 # still exists under that name - a rename would go undetected by that test
 # alone. This test closes that gap by querying the raw, un-normalised
 # `llamacpp:*` series directly, with no `or vector(0)` anywhere in the path:
-# if any of these three names is ever renamed upstream, this fails loudly
+# if any of these SEVEN names is ever renamed upstream, this fails loudly
 # instead of the recording rule silently going to a permanent zero.
+#
+# "three" until 2026-08-20, while the loop below listed seven. Counted with
+# `grep -oE 'llamacpp:[a-z_]+' platform/30-observability/recording-rules.yaml |
+# sort -u | wc -l`, which prints 7, and the loop matches that set exactly.
 @test "raw engine series backing the normalisation still exist" {
   start_prom_portforward
   for series in llamacpp:requests_processing llamacpp:requests_deferred \
@@ -85,7 +94,17 @@ start_grafana_portforward() {
 @test "dashboard is provisioned and reads only llmstack series" {
   run bash -c "grep -o 'llmstack:[a-z_]*' platform/30-observability/dashboards/llm-serving.json | sort -u | wc -l | tr -d ' '"
   [ "$output" -ge 3 ]
-  run bash -c "grep -cE '\"expr\": \"(llamacpp|vllm):' platform/30-observability/dashboards/llm-serving.json || true"
+  # UNANCHORED on purpose, since 2026-08-20. The pattern used to be
+  # `'"expr": "(llamacpp|vllm):'`, which only matches a raw engine series at the
+  # very START of an expr string. Proved blind by planting
+  # `"expr": "rate(llamacpp:tokens_predicted_total[1m])"` into a copy of the
+  # dashboard: the anchored form reported 0 while an unanchored grep reported 2.
+  # The dashboard's own panels are written `rate(llmstack:...)`, so a violation
+  # added in the file's dominant style was exactly the one the guard could not
+  # see - which left boundary 3 in CLAUDE.md unguarded in practice.
+  #
+  # Dropping the anchor costs nothing: it still reports 0 on the real file.
+  run bash -c "grep -cE '(llamacpp|vllm):' platform/30-observability/dashboards/llm-serving.json || true"
   [ "$output" -eq 0 ]
 }
 

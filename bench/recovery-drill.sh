@@ -30,10 +30,20 @@ BASE="http://llm.localtest.me"
 OUT="bench/results/$(date +%Y-%m-%d)-recovery"
 mkdir -p "$OUT"
 
-# Refuse to run at all if the context is not the kind cluster. A drill whose
+# Refuse to run at all unless the kind cluster actually answers. A drill whose
 # whole first act is `delete namespace` does not get to guess.
-k config current-context >/dev/null 2>&1 || {
-  printf 'recovery-drill: context %s is not reachable, refusing to delete anything\n' \
+#
+# `k version` and not `k config current-context`. The latter was here until
+# 2026-08-20 and was a no-op: `kubectl config current-context` reads the
+# kubeconfig file, never contacts a cluster, and ignores `--context` entirely.
+# Confirmed by running it with the daemon down:
+#   kubectl --context does-not-exist config current-context
+#   -> kind-llm-serving-stack, exit 0
+# So the guard could only fail when kubeconfig had no current-context at all, and
+# its message ("is not reachable") was false. Routing through k() does fix the
+# wrong-cluster risk; this line is what makes the reachability claim true.
+k version --request-timeout=10s >/dev/null 2>&1 || {
+  printf 'recovery-drill: context %s does not answer, refusing to delete anything\n' \
     "$KUBECTL_CONTEXT" >&2
   exit 1
 }

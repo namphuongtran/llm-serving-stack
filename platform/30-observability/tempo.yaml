@@ -83,14 +83,26 @@
 # error, no unknown-field error, and no config error of any kind appeared in the
 # log - the whole config parsed.
 #
-# The two blocks this file gained in the 2.x -> 3.0 rewrite are not merely
-# accepted, they are ACTIVE. The log carries repeated
+# The log carries repeated
 #   caller=backendworker.go:529 msg="error calling scheduler"
 #   err="rpc error: code = NotFound desc = no jobs found"
 # which is the backend worker polling the backend scheduler for compaction work
 # and finding none, because this Tempo holds no blocks yet. It is logged at
-# level=error and is benign; what it proves is that both `backend_worker` and
-# `backend_scheduler` below were read and wired to each other.
+# level=error and is benign.
+#
+# It proves LESS than this comment first claimed. It said the log "proves that
+# both backend_worker and backend_scheduler below were read and wired to each
+# other". Corrected 2026-08-20: in `target=all` Tempo starts every module whether
+# or not its config block is present, and an absent block takes defaults. A
+# worker polling a scheduler and getting NotFound would log identically with both
+# blocks deleted. So the log proves the two MODULES are running and talking; it
+# does not discriminate between "our block was read" and "the module defaulted".
+#
+# > **Untried (2026-08-20):** that the 24h `block_retention` set below is the
+# > value Tempo is using. The mutation that would settle it is to change one of
+# > the two blocks to an obviously wrong value and see whether Tempo notices -
+# > the same method this repository used on the CoreDNS rewrite and the Kyverno
+# > assertions, and the method this file did not apply to its own claim.
 #
 # > **Untried (2026-08-19):** that a span ever arrives. Tempo starting is not
 # > Tempo receiving. Settle that with the "spans are reaching tempo" test in

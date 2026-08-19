@@ -5,9 +5,15 @@ meta:
   machine: "Apple M4, arm64, 32 GB"
 
 kubernetes:
-  # read 2026-08-19: no cluster was created (machine cannot spare the memory
-  # Docker needs), so this is not the image a running cluster reported. It is
-  # the default node image kind v0.32.0 (the version installed on this
+  # read 2026-08-19, BEFORE any cluster existed, so this was not the image a
+  # running cluster reported. A cluster was created later the same day and this
+  # digest is now confirmed from it: `kubectl get nodes -o wide` reports
+  # v1.36.1 on all three nodes, and platform/10-istio/coredns-rewrite.yaml's
+  # header records reading that cluster's Corefile. The reason originally given
+  # here, that the machine could not spare the memory, stopped being true when
+  # Docker Desktop was raised to 23.2 GiB.
+  #
+  # It is the default node image kind v0.32.0 (the version installed on this
   # machine, confirmed with `kind --version`) pins in its own release notes:
   #   https://github.com/kubernetes-sigs/kind/releases/tag/v0.32.0
   #   "The default node image is now
@@ -222,13 +228,20 @@ images:
   # server-b10482, -83, -84, -85, -86, -87, -89, and -90 (and -88) against
   # ghcr.io. All nine return HTTP 404; server-b10481 returns 200.
   #
-  # Four of those nine tags do not exist upstream either, so their 404 says
-  # nothing. `git ls-remote --tags https://github.com/ggml-org/llama.cpp.git
-  # 'refs/tags/b1048*'` on 2026-08-19 returns exactly b10481, b10483, b10485,
-  # b10486, and b10488. So the real finding is narrower than it first looked:
-  # b10483, b10485, b10486, and b10488 are released upstream with no container
-  # image behind them. An earlier version of this comment wrote the range
-  # "b10485 to b10488", which implies a b10487 that was never tagged.
+  # FIVE of those nine tags do not exist upstream either, so their 404 says
+  # nothing about a missing image. `git ls-remote --tags
+  # https://github.com/ggml-org/llama.cpp.git 'refs/tags/b1048*'` on 2026-08-20
+  # returns six refs: b1048, b10481, b10483, b10485, b10486, and b10488. So of
+  # the nine probed, four exist (b10483, b10485, b10486, b10488) and five do not.
+  #
+  # Those four are the real finding: released upstream with no container image
+  # behind them.
+  #
+  # Two corrections are folded in here. The first version wrote the range
+  # "b10485 to b10488", which implies a b10487 that was never tagged. The second
+  # said "four of those nine tags do not exist" and then listed the four that DO,
+  # which inverted the logic; and it said the command returns five refs when it
+  # returns six, because the glob also matches the bare tag b1048.
   llamacpp_server: "ghcr.io/ggml-org/llama.cpp:server-b10481@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b"
   # Was 26.7.1 earlier on 2026-08-19. Bumped the same day because 26.7.2 is a
   # security release. Its release page names EIGHT distinct CVEs, counted with

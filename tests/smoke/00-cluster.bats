@@ -1,4 +1,12 @@
-setup() { load '../lib/helpers'; }
+setup() {
+  load '../lib/helpers'
+  # Every assertion below is about cluster state, so a suite that cannot reach the
+  # API server must fail rather than report anything. Added across the suites on
+  # 2026-08-20: with Docker down, five files gave 4 passes and 22 failures, and
+  # three of those four passes were bare `[ "$status" -ne 0 ]` assertions
+  # satisfied by kubectl failing to connect. See require_cluster in ../lib/helpers.
+  require_cluster
+}
 
 @test "cluster exists with three nodes" {
   run k get nodes --no-headers

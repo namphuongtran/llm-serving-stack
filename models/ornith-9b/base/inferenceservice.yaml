@@ -66,10 +66,17 @@ spec:
       # addStorageInitializerAnnotations (same file, line 294) sets the
       # internal source-uri annotation to "", and the storage-initializer
       # injector then appends an init container plus a volumeMount named
-      # `kserve-provision-location` at /mnt/models. The local overlay already
-      # mounts a volume named `models` at /mnt/models, and KServe
-      # de-duplicates mounts by volume NAME, not by path, so the pod would
-      # carry two mounts at one path and the API server would reject it
+      # `kserve-provision-location` at /mnt/models.
+      #
+      # The reason given here until 2026-08-20 was a path collision with our own
+      # volume. That reason expired: the overlays now mount at /models, not
+      # /mnt/models, precisely so KServe's own injected mounts have /mnt/models to
+      # themselves. The surviving reason is the stronger one, and it does not
+      # depend on paths: the storage-initializer expects a model REPOSITORY to
+      # copy, and this repository fetches one named GGUF file with an init
+      # container that verifies its sha256. There is nothing for the initializer
+      # to do, so inviting it in buys an extra container and a second download
+      # path for no gain
       # inside the ReplicaSet, where the reason appears only in events.
       #
       # The reason for suppressing injection at all is unchanged (risk R1):

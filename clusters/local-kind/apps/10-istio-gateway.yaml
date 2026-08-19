@@ -1,10 +1,23 @@
 # Wave 1, alongside the four Istio charts above: the shared Gateway, the
-# ambient-labelled llm namespace, and the nodePort pin, none of which are
-# chart output. Sources this repository's platform/10-istio/ directory
-# directly (gateway.yaml, namespace-llm.yaml, gateway-service-nodeport.yaml);
+# ambient-labelled llm namespace, the nodePort pin, gateway tracing, and the
+# CoreDNS rewrite, none of which are chart output.
+#
+# Sources this repository's platform/10-istio/ directory directly, so it applies
+# every *.yaml at that level. All FIVE, listed because this comment is where a
+# reader looks to find out:
+#   gateway.yaml                  the shared Gateway
+#   namespace-llm.yaml            namespace llm, ambient-labelled
+#   gateway-service-nodeport.yaml the nodePort pin, as a PostSync hook Job
+#   telemetry.yaml                gateway tracing (omitted from this list until
+#                                 2026-08-20, though added earlier)
+#   coredns-rewrite.yaml          in-cluster DNS for the OIDC issuer. Carries
+#                                 `Prune=false`, because pruning the coredns
+#                                 ConfigMap would delete all cluster DNS rather
+#                                 than restore kind's default.
+#
 # install.sh and gateway-api-crds.sh in the same directory are shell scripts,
 # not manifests, and Argo CD's directory source only picks up
-# *.yaml/*.yml/*.json.
+# *.yaml/*.yml/*.json. helm/ is a subdirectory and recurse is false.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

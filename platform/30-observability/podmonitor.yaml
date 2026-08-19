@@ -69,11 +69,20 @@ spec:
 # it would have reported a false negative about the port. That is why it is
 # rewritten above rather than kept.
 #
-# > **Untried (2026-08-19):** that this scrape returns data, as opposed to
-# > merely finding a target. The port is declared and the selector now matches,
-# > but no Prometheus has scraped it here yet. Settle it with
-# > `tests/smoke/05-observability.bats`, whose "prometheus is scraping the
-# > gateway" test fails when the target set is empty.
+# SETTLED too, and this marker was wrong for a few hours. It said "no Prometheus
+# has scraped it here yet", while docs/deployment-walkthrough.md in the same
+# commit reported the target as `health=up`. Both cannot be true: health=up means
+# the most recent scrape succeeded.
+#
+# The walkthrough was right. Read from the live Prometheus on 2026-08-19:
+#   podMonitor/observability/istio-gateway/0   1/1 up
+#   endpoint http://10.244.2.6:15020/stats/prometheus   state UP
+# and `istio_requests_total` returned 2 series. So the scrape finds the target
+# AND returns data.
+#
+# The test that guards it is named `prometheus is scraping the istio gateway, not
+# only the predictor` in tests/smoke/05-observability.bats, and it asserts
+# `up{namespace="istio-system"} == 1`.
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:

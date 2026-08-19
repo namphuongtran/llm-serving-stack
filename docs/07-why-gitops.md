@@ -81,7 +81,7 @@ by hand outside `local:up` itself.
 > was raised to 23.2 GiB the same day and a cluster ran the whole stack. But it
 > ran through the imperative path, not `task local:up`, so this number is still
 > owed. `docs/deployment-walkthrough.md` has the per-layer timings that came out
-> of that run, totalling 9 minutes 33 seconds for the platform layers, which is a
+> of that run, totalling 9 minutes 59 seconds for the platform layers, which is a
 > floor for this number and not a substitute for it. Run that command
 > once and record the number here with its date; it is also the starting
 > point for the recovery time objective `bench/recovery-drill.sh` measures in

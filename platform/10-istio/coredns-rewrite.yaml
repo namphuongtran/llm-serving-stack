@@ -46,8 +46,20 @@
 # CoreDNS has no `import` directive in kind's Corefile, and `rewrite` must sit
 # inside the `.:53` server block. There is no way to add one line without
 # owning the whole file. So this ConfigMap REPLACES the Corefile that
-# `kindest/node` ships, and everything below except the two rewrite lines is
-# kind's default copied verbatim.
+# `kindest/node` ships. Apart from ONE added directive and the comment block
+# above it, everything below is kind's default copied verbatim.
+#
+# Do not trust a line count here, including this one: an earlier version said
+# "the two rewrite lines", which is a number a reader would have diffed against
+# and not found, and the comment block has since grown. Diff it instead:
+#   strip() { grep -vE '^[[:space:]]*#|rewrite name llm' | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}'; }
+#   diff <(yq -r '.data.Corefile' platform/10-istio/coredns-rewrite.yaml | strip) \
+#        <(kubectl -n kube-system get cm coredns -o jsonpath='{.data.Corefile}' | strip)
+#
+# The `sed` drops trailing blank lines. Without it the diff reports one spurious
+# line, because `yq` emits a trailing newline the ConfigMap's stored value does
+# not have. Ran this form on 2026-08-20 against a cluster built from the pinned
+# digest: no output, so no drift.
 #
 # That is only safe because the node image is pinned by digest:
 # versions.yaml `kubernetes.kind_node` is
@@ -57,12 +69,33 @@
 #
 # **Bumping kind_node means re-reading this file.** A newer node image may ship a
 # different Corefile, and this manifest would silently revert whatever changed.
-# tests/smoke/02-gateway.bats asserts the BEHAVIOUR rather than the string, so a
-# drift that breaks resolution fails loudly; a drift that merely loses an
-# unrelated kind improvement would not be caught. Re-read it deliberately.
 #
-# No restart is needed. kind's Corefile ends with `reload`, so CoreDNS picks up a
-# ConfigMap change on its own within about 30 seconds. That is why this file is a
+# The guard is tests/smoke/03-identity.bats, whose last two tests query from
+# INSIDE a pod: one asserts the name resolves to the gateway's ClusterIP, the
+# other fetches the OIDC discovery document. A drift that breaks in-cluster
+# resolution fails both, loudly.
+#
+# This comment named tests/smoke/02-gateway.bats until 2026-08-20. That was the
+# citation that resolves and does not hold: 02-gateway.bats reaches
+# llm.localtest.me only from the HOST, where the host resolver answers, so it
+# cannot see in-cluster DNS drift at all. Naming it here would have bounded the
+# risk of owning this Corefile with a guard structurally incapable of catching it.
+#
+# Neither suite catches a drift that merely loses an unrelated kind improvement.
+# Verified 2026-08-20 that the Corefile below still matches the live one on a
+# cluster built from the pinned digest, byte for byte apart from the four added
+# lines: `kubectl -n kube-system get cm coredns -o jsonpath='{.data.Corefile}'`
+# diffed against `yq -r '.data.Corefile'` on this file, both with comments and the
+# rewrite stripped, reports no difference. Re-read it deliberately on a bump.
+#
+# No restart is needed. kind's Corefile ends with `reload`, so CoreDNS rereads the
+# ConfigMap on its own. How long that takes is NOT "about 30 seconds", which is
+# what this said until 2026-08-20: the reload plugin adds jitter to its check
+# interval by design (its own README: "jitter is added to the reload check
+# interval"), and the kubelet's delay in projecting a changed ConfigMap into the
+# pod comes on top and is unaccounted for. The one number actually measured is
+# end to end: 401 back to 200 in about 80 seconds. Treat that as the observation
+# and the decomposition as unknown. That is why this file is a
 # plain manifest and not a Job: it works identically on the imperative path and
 # under Argo CD, with no ServiceAccount, no RBAC, and no extra pinned image.
 apiVersion: v1
@@ -74,6 +107,20 @@ metadata:
   # cluster. Argo CD applies it from the same directory source; the explicit
   # namespace here wins over the Application's destination.
   namespace: kube-system
+  annotations:
+    # Prune=false, and this one is not optional.
+    #
+    # clusters/local-kind/apps/10-istio-gateway.yaml sources this directory with
+    # `automated: {prune: true, selfHeal: true}`. Without this annotation,
+    # deleting or renaming this file would make Argo CD DELETE the coredns
+    # ConfigMap rather than restore kind's default - taking out all cluster DNS,
+    # not just the rewrite, and leaving recovery to whoever still has the
+    # verbatim Corefile. This object is adopted from the cluster, not created by
+    # this repository, so pruning it is never the right action.
+    #
+    # selfHeal still applies, which is wanted: Argo CD will put the rewrite back
+    # if something else overwrites the Corefile.
+    argocd.argoproj.io/sync-options: Prune=false
 data:
   Corefile: |
     .:53 {
@@ -82,9 +129,17 @@ data:
            lameduck 5s
         }
         ready
-        # THE ONLY ADDITION to kind's default Corefile. Everything else in this
-        # block is verbatim. Placed before `kubernetes` so the rewritten name is
-        # then answered by the cluster zone.
+        # THE ONLY ADDED DIRECTIVE. Everything else in this block is verbatim.
+        #
+        # Its POSITION in the file is cosmetic. An earlier version of this comment
+        # said it was "placed before `kubernetes` so the rewritten name is then
+        # answered by the cluster zone", which is not how CoreDNS works: plugin
+        # execution order is fixed at compile time by plugin.cfg, not by Corefile
+        # line order. That file's own header says "Directives are registered in
+        # the order they should be executed. Ordering is VERY important", and it
+        # lists `rewrite:rewrite` at line 53 and `kubernetes:kubernetes` at line
+        # 69 (read 2026-08-20). So rewrite runs first wherever this line sits.
+        # The result is right; the stated reason was wrong.
         rewrite name llm.localtest.me llm-istio.istio-system.svc.cluster.local
         kubernetes cluster.local in-addr.arpa ip6.arpa {
            pods insecure
