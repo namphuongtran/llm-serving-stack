@@ -75,7 +75,7 @@ kserve:
       #    and would not carry the 600s streaming timeouts either.
       #
       # With this true, KServe creates no HTTPRoute and marks IngressReady
-      # true directly (httproute_reconciler.go:1065, "Ingress creation is
+      # true directly (httproute_reconciler.go:1066, "Ingress creation is
       # disabled. We set it to true as the isvc condition depends on it.").
       # The route that actually serves traffic is
       # models/ornith-9b/overlays/*/httproute.yaml.

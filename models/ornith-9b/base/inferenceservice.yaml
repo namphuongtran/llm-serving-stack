@@ -23,11 +23,12 @@ metadata:
     #     express, so a KServe-generated one would be a second, competing
     #     scaler.
     #   - `external` means "some controller outside KServe scales this".
-    #     reconcilers/hpa/hpa_reconciler.go:250 `shouldCreateHPA` returns
-    #     false unless the annotation is absent or "hpa", and line 247
-    #     `shouldDeleteHPA` removes an HPA KServe already created once the
-    #     class becomes external - so KServe creates nothing and cleans up
-    #     after an upgrade from a cluster that ran without this annotation.
+    #     reconcilers/hpa/hpa_reconciler.go:252 `shouldCreateHPA` returns
+    #     false unless the annotation is absent or "hpa" (its return is at
+    #     :260), and :226 `shouldDeleteHPA` removes an HPA KServe already
+    #     created once the class becomes external (its return is at :249) -
+    #     so KServe creates nothing and cleans up after an upgrade from a
+    #     cluster that ran without this annotation.
     #   - `none` behaves the same as external in both functions, but says
     #     "nothing scales this", which is false here.
     serving.kserve.io/autoscalerClass: external
