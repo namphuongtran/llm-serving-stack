@@ -39,12 +39,17 @@ tasks:
     # (jetstack/cert-manager, istio/base, argo/argo-cd, ...). Nothing else in
     # this repository ever ran `helm repo add`, so on a clean machine
     # `task local:up` used to die at platform/50-argocd/install.sh with
-    # "Error: repo argo not found". The same gap applied to all seven aliases
+    # "Error: repo argo not found". The same gap applied to all eight aliases
     # below. KServe's charts are pulled by OCI reference and need no alias.
+    #
+    # kyverno was added on 2026-08-19. It was named in the original plan
+    # (docs/superpowers/plans/2026-08-17-phase-1-local-stack.md:144) and
+    # dropped in implementation, so platform/12-kyverno/install.sh had no
+    # alias to install from and CI could not install the policy engine at all.
     #
     # Idempotent: `helm repo add --force-update` overwrites an existing entry
     # instead of failing, so re-running this task is always safe.
-    # URLs checked 2026-08-19 (HTTP 200 on <url>/index.yaml for all seven).
+    # URLs checked 2026-08-19 (HTTP 200 on <url>/index.yaml for all eight).
     cmds:
       - helm repo add jetstack https://charts.jetstack.io --force-update
       - helm repo add istio https://istio-release.storage.googleapis.com/charts --force-update
@@ -53,6 +58,7 @@ tasks:
       - helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
       - helm repo add kuadrant https://kuadrant.io/helm-charts --force-update
       - helm repo add argo https://argoproj.github.io/argo-helm --force-update
+      - helm repo add kyverno https://kyverno.github.io/kyverno/ --force-update
       - helm repo update
 
   # --- local lifecycle -----------------------------------------------------
@@ -112,10 +118,14 @@ tasks:
       - bats tests/contract
 
   lint:
-    desc: Build every overlay and check for empty version pins
+    desc: Build every overlay, check version pins, check Argo CD sync waves
     cmds:
       - for o in models/*/overlays/*; do kustomize build "$o" >/dev/null || exit 1; done
       - '[ "$(yq -r ".. | select(type == \"!!str\") | select(. == \"\")" versions.yaml | wc -l)" -eq 0 ]'
+      # Added 2026-08-19. tests/smoke/10-gitops.bats asserts the same property
+      # against live Application objects and has never run anywhere, so until
+      # now nothing checked it at all. This form needs no cluster.
+      - ./clusters/local-kind/check-sync-waves.sh
 
   policy:
     desc: Run admission policies locally, the same ones the cluster enforces

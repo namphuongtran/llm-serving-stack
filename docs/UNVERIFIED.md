@@ -104,11 +104,32 @@ the result and the date in `README.md`.
 ## Unproven: every dated measurement still owed
 
 Every dated `> **Unmeasured` marker elsewhere in this repository, reconciled
-by `grep -rn "Unmeasured (" . | grep -v docs/UNVERIFIED.md | wc -l`, which
-printed **14** when it was last run, on 2026-08-19, matching the 14 rows below
-(the same 14 file:line pairs; this document's own references to that marker text in prose are
-excluded from the count on purpose - otherwise this table would inflate the
-number every time it mentions the pattern it is counting). Each row below
+by
+
+```
+grep -rn "Unmeasured (" . --exclude-dir=.git \
+  | grep -v docs/UNVERIFIED.md \
+  | grep -v docs/superpowers/specs/ \
+  | grep -v CLAUDE.md \
+  | wc -l
+```
+
+which printed **14** when it was last run, on 2026-08-19, matching the 14 rows
+below (the same 14 file:line pairs).
+
+Three exclusions, each for its own reason, all of them checked on 2026-08-19:
+
+- **This file.** Its own references to the marker text in prose would inflate
+  the number every time it mentions the pattern it is counting.
+- **`docs/superpowers/specs/`.** A design document records markers about a
+  plan, not claims this repository makes about itself.
+  `2026-08-19-first-run-measurement-design.md` carries three, and it is
+  superseded, so none of the three is owed.
+- **`CLAUDE.md`.** Its line 146 is the rule that defines the marker
+  (`> **Unmeasured (<date>):**`), not a marker. Without this exclusion the
+  command counts the instruction as one of the things it instructs about.
+
+Each row below
 names the file it lives in and the command that would settle it; most share
 the same root
 cause (no cluster exists in this authoring pass), so it is not repeated in
@@ -130,6 +151,77 @@ every row.
 | `docs/adr/0006-metric-normalisation.md:120` | Whether the `llamacpp:*` metric names are actually present, unrenamed, on a live `/metrics` endpoint | `kubectl -n llm exec <predictor pod> -c kserve-container -- wget -qO- http://127.0.0.1:8080/metrics \| grep -E '^# (HELP\|TYPE)' \| sort` |
 | `docs/runbooks/node-drain.md:75` | Memory footprint of two `ornith-9b-predictor` replicas resident together | `kubectl -n llm top pod -l serving.kserve.io/inferenceservice=ornith-9b` |
 | `docs/runbooks/recovery-drill.md:31` | The recovery drill's own time-to-first-token number. The script measures the arrival of the first streamed `data:` chunk (fixed 2026-08-19; it previously timed a `GET /v1/models` poll and recorded it under that name) | `task drill:recovery` (runs `bench/recovery-drill.sh`) |
+
+## CI coverage, changed 2026-08-19, and still unobserved
+
+`.github/workflows/ci.yml` gained a fourth job and two more suites on
+2026-08-19. See `docs/superpowers/specs/2026-08-19-ci-coverage-design.md`.
+
+**None of it has run yet.** The workflow was edited, `actionlint` reports it
+clean, and no push has exercised it. A clean `actionlint` says the YAML is
+well formed. It says nothing about whether the jobs pass.
+
+Where each suite runs after the change:
+
+| Suite | Runs in | Before 2026-08-19 |
+|---|---|---|
+| `00-cluster` | `smoke` | nowhere |
+| `01-wave0`, `02-gateway`, `03-identity`, `04-kserve`, `06-auth-quota` | `smoke` | `smoke` |
+| `11-policy` | `smoke` | nowhere |
+| `05-observability` | `observability` | nowhere |
+| `tests/contract/` | `smoke` and `observability` | `smoke` |
+| `07-autoscaling`, `08-availability`, `09-bench`, `12-recovery`, `10-gitops` | nowhere | nowhere |
+
+Four things this change introduces that no cluster has tested:
+
+1. **Whether the CI model overlay survives live admission.** Kyverno is now
+   installed before the model deploys, so `policy/`'s three rules guard a real
+   namespace for the first time. Settle it by reading the `smoke` job's
+   Install platform and Deploy the CI model steps.
+2. **Whether `kubectl wait --for=condition=Ready clusterpolicy` is the right
+   wait.** `platform/12-kyverno/install.sh` uses it. The CRD in chart 3.8.2
+   has `status.conditions`, confirmed by reading the rendered chart, but the
+   condition's type string was not read at any source. If it is wrong the
+   install times out, which is the correct failure.
+3. **Whether the `observability` job fits a `ubuntu-24.04-arm` runner.**
+   `.github/workflows/ci.yml` records that kube-prometheus-stack plus KEDA
+   plus two replicas of the 0.5B model did not. This job has one replica and
+   no KEDA.
+4. **Whether llama.cpp exposes its counters before its first request.**
+   `tests/smoke/05-observability.bats` asserts three `llamacpp:*` series
+   exist. The job runs `tests/contract/` first to generate traffic, but
+   whether that is necessary or sufficient is unobserved.
+
+## Predicted defect: `tests/smoke/10-gitops.bats` and `root-app`
+
+Found by reading, on 2026-08-19. Not fixed, and not worked around.
+
+`tests/smoke/10-gitops.bats` second test compares two counts. It counts
+Applications carrying an `argocd.argoproj.io/sync-wave` annotation, and it
+counts all Applications in namespace `argocd`, and asserts the two are equal.
+
+All 15 files in `clusters/local-kind/apps/` carry a sync wave, confirmed with
+`yq -r '.metadata.annotations."argocd.argoproj.io/sync-wave"'` over the
+directory on 2026-08-19. `clusters/local-kind/root-app.yaml` does not, and
+`task local:up` applies it into namespace `argocd`, where it is a sixteenth
+Application.
+
+So the test is predicted to compare 15 against 16 and fail. It has never run
+anywhere, so nobody has seen it.
+
+> **Untried (2026-08-19):** the prediction itself. Settle it with `bats
+> tests/smoke/10-gitops.bats` against a cluster built by `task local:up`.
+
+Two ways to resolve it once someone can run it, and the choice is a real one,
+not a formality. Either `root-app` gains a sync wave, which is harmless but
+meaningless because nothing orders `root-app` against anything. Or the test
+narrows to the Applications that `root-app` manages. This document records the
+finding; it does not pick.
+
+The new lint check, `clusters/local-kind/check-sync-waves.sh`, deliberately
+covers `apps/` only, and its own comments say so. It is not a fix for this. It
+checks a different thing: the files in git, rather than the objects in a
+cluster.
 
 ## What is proven, and the sharp limit on it
 

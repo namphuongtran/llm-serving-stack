@@ -24,6 +24,13 @@ jobs:
         run: for o in models/*/overlays/*; do kustomize build "$o" >/dev/null; done
       - name: No empty version pins
         run: test "$(yq -r '.. | select(type == "!!str") | select(. == "")' versions.yaml | wc -l)" -eq 0
+      - name: Every Argo CD Application declares a sync wave
+        # tests/smoke/10-gitops.bats asserts this against live Application
+        # objects, and that suite runs nowhere (it needs Argo CD with the whole
+        # stack Healthy). Until this step was added on 2026-08-19, nothing
+        # checked the property at all. This form reads the files in git and
+        # needs no cluster.
+        run: ./clusters/local-kind/check-sync-waves.sh
 
   policy:
     runs-on: ubuntu-24.04-arm
@@ -78,6 +85,17 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Record the runner size
+        # Until 2026-08-19 this workflow asserted "The runner has 4 vCPU" in a
+        # comment, with no date and no source. This prints the real numbers
+        # into the run log instead, dated by the run itself, and adds the
+        # memory and disk figures nobody had recorded. Every sizing decision
+        # in this file depends on these three numbers, so quote them from a
+        # run rather than from a comment.
+        run: |
+          nproc
+          free -h
+          df -h /
       - name: Create cluster
         uses: helm/kind-action@v1
         with:
@@ -109,11 +127,11 @@ jobs:
         # charts, kuadrant for the operator). KServe's charts are pulled by
         # OCI reference directly and need no repo add.
         #
-        # This is a deliberate subset of the seven aliases `task helm:repos`
+        # This is a deliberate subset of the eight aliases `task helm:repos`
         # adds (Taskfile.yml). The smoke job below installs cert-manager,
-        # Istio, Keycloak, KServe, and Kuadrant only - it does not install
-        # KEDA, kube-prometheus-stack, the OTel Collector, or Argo CD, so
-        # kedacore, prometheus-community, open-telemetry, and argo are not
+        # Istio, Kyverno, Keycloak, KServe, and Kuadrant only - it does not
+        # install KEDA, kube-prometheus-stack, the OTel Collector, or Argo CD,
+        # so kedacore, prometheus-community, open-telemetry, and argo are not
         # needed here. Adding one of those installs to this job means adding
         # its alias here as well.
         run: |
@@ -121,6 +139,7 @@ jobs:
           helm repo add jetstack https://charts.jetstack.io
           helm repo add istio https://istio-release.storage.googleapis.com/charts
           helm repo add kuadrant https://kuadrant.io/helm-charts
+          helm repo add kyverno https://kyverno.github.io/kyverno/
           helm repo update
       - name: Install platform
         run: |
@@ -128,6 +147,14 @@ jobs:
           ./platform/10-istio/gateway-api-crds.sh
           ./platform/00-cert-manager/install.sh
           ./platform/10-istio/install.sh
+          # Wave 1, before Keycloak (also wave 1) and before the model deploy
+          # below. Order matters: a policy engine installed after the
+          # workloads it governs has governed nothing. This is the first time
+          # policy/ has been admission-live on any cluster - before
+          # platform/12-kyverno/install.sh was written on 2026-08-19 there was
+          # no imperative installer for it at all, so tests/smoke/11-policy.bats
+          # ran nowhere.
+          ./platform/12-kyverno/install.sh
           ./platform/15-keycloak/install.sh
           ./platform/20-kserve/install.sh
           ./platform/25-kuadrant/install.sh
@@ -143,16 +170,112 @@ jobs:
       - name: Smoke and contract tests
         run: |
           sudo apt-get update && sudo apt-get install -y bats
-          bats tests/smoke/01-wave0.bats tests/smoke/02-gateway.bats \
-               tests/smoke/03-identity.bats tests/smoke/04-kserve.bats \
-               tests/smoke/06-auth-quota.bats tests/contract/
+          # 00-cluster and 11-policy were added on 2026-08-19. 00-cluster
+          # costs nothing: the cluster already has three nodes, because the
+          # Create cluster step above passes prereqs/kind-cluster.yaml.
+          # 11-policy became runnable only once Kyverno had an installer.
+          bats tests/smoke/00-cluster.bats tests/smoke/01-wave0.bats \
+               tests/smoke/02-gateway.bats tests/smoke/03-identity.bats \
+               tests/smoke/04-kserve.bats tests/smoke/06-auth-quota.bats \
+               tests/smoke/11-policy.bats tests/contract/
 
-  # The runner has 4 vCPU, so the observability, autoscaling, availability,
-  # and benchmark suites are deliberately excluded here: kube-prometheus-stack
-  # plus KEDA plus two replicas of even the 0.5B CI model do not fit
-  # alongside everything the smoke job above already installs, and the node
-  # drain / rolling restart drills need more than one schedulable node's
-  # worth of headroom to mean anything.
+  # Its own cluster, not a step inside `smoke`. Two reasons. A failure here
+  # must not mask a smoke failure, and this job is the one whose fit is
+  # genuinely in doubt, so it should be able to go red on its own.
+  #
+  # Added 2026-08-19. Before that, tests/smoke/05-observability.bats ran
+  # nowhere, because no job installed Prometheus.
+  observability:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record the runner size
+        # Same reason as the smoke job. This job's whole open question is
+        # whether it fits, so the numbers belong in its log.
+        run: |
+          nproc
+          free -h
+          df -h /
+      - name: Create cluster
+        uses: helm/kind-action@v1
+        with:
+          config: prereqs/kind-cluster.yaml
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          # Same pin, and the same source-of-truth note, as the lint job above.
+          KUSTOMIZE_VERSION=v5.8.1
+          curl -sSLo kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_arm64.tar.gz"
+          tar -xzf kustomize.tar.gz kustomize
+          sudo mv kustomize /usr/local/bin/
+          sudo snap install yq
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      - name: Add helm repos
+        # A different subset again from the smoke job's. This job installs
+        # cert-manager, Istio, KServe, and observability, so it needs jetstack,
+        # istio, prometheus-community, and open-telemetry. It installs neither
+        # Kuadrant nor Kyverno nor KEDA, so those three aliases are absent.
+        run: |
+          set -euo pipefail
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+          helm repo update
+      - name: Install platform
+        # No Keycloak, no Kuadrant, no Kyverno, no KEDA, no Argo CD.
+        # tests/smoke/05-observability.bats reads Prometheus, the OTel
+        # Collector deployment, and the predictor's own series. It needs none
+        # of those five, and every one of them costs memory this job may not
+        # have.
+        run: |
+          set -euo pipefail
+          ./platform/10-istio/gateway-api-crds.sh
+          ./platform/00-cert-manager/install.sh
+          ./platform/10-istio/install.sh
+          ./platform/20-kserve/install.sh
+      - name: Deploy the CI model
+        run: kustomize build models/ornith-9b/overlays/ci | kubectl apply -f -
+      - name: Install observability
+        # After the model, not before. The PodMonitor this script applies
+        # selects on the KServe inferenceservice label, and the recording
+        # rules normalise series the predictor has to be emitting.
+        run: ./platform/30-observability/install.sh
+      - name: Contract then observability suites
+        # The contract suite runs first on purpose, and not only to re-check
+        # the API under a platform combination the smoke job never builds. It
+        # is also the traffic generator. `llmstack:tokens_out_total` and
+        # `llamacpp:tokens_predicted_total` are counters, and a counter that
+        # has never counted anything may not be exposed at all.
+        #
+        # Untried (2026-08-19): whether llama.cpp exposes those counters at
+        # zero before its first request. If the raw-series test fails while
+        # the rest of the suite passes, that hypothesis is the first thing to
+        # check, and this comment is the record that we expected it.
+        run: |
+          sudo apt-get update && sudo apt-get install -y bats
+          bats tests/contract/ tests/smoke/05-observability.bats
+
+  # Suites that still run nowhere, each with its own reason. `smoke` above
+  # covers 00-cluster, 01-wave0, 02-gateway, 03-identity, 04-kserve,
+  # 06-auth-quota, 11-policy, and tests/contract/. `observability` covers
+  # 05-observability. That leaves four, plus one partial:
+  #
+  #   - 07-autoscaling: drives the predictor above its floor of two replicas.
+  #   - 08-availability: needs two replicas on separate nodes, then drains a
+  #     node. A drill needs more than one schedulable node's worth of headroom
+  #     to mean anything.
+  #   - 09-bench: needs sustained load.
+  #   - 12-recovery: deletes namespace llm and waits for Argo CD to rebuild it,
+  #     so it needs the full GitOps stack this workflow never installs.
+  #   - 10-gitops, partly: its second test only needs Applications to exist,
+  #     and the lint job now checks the same property against the files in git.
+  #     Its first test needs every Application Synced and Healthy, which is the
+  #     whole stack. Its third test is already `skip`ped in the file.
+  #
+  # The shared cause is the runner size, which the Record the runner size steps
+  # above now print with each run's own date rather than asserting here.
   #
   # Not present in phase 1, deliberately:
   #   - multi-arch image build: this repository owns no image. The engine is

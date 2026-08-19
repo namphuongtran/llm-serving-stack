@@ -18,11 +18,15 @@ mem_gib=$((mem_gib / 1073741824))
 
 # Every platform/*/install.sh names its chart by repo alias, so a present
 # `helm` binary is not enough: without these aliases the first install script
-# dies with "Error: repo <name> not found". `task helm:repos` adds all seven
+# dies with "Error: repo <name> not found". `task helm:repos` adds all eight
 # (and `task local:up` depends on it); this check is what makes a missing one
 # fail here, with the fix named, instead of halfway through an install.
+#
+# kyverno joined the list on 2026-08-19, when platform/12-kyverno/install.sh
+# was written. Before that the policy engine had no imperative installer, so
+# nothing here needed the alias.
 missing_repos=""
-for repo in jetstack istio kedacore prometheus-community open-telemetry kuadrant argo; do
+for repo in jetstack istio kedacore prometheus-community open-telemetry kuadrant argo kyverno; do
   helm repo list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "$repo" || missing_repos="$missing_repos $repo"
 done
 [ -z "$missing_repos" ] || fail "missing helm repos:$missing_repos (run: task helm:repos)"
