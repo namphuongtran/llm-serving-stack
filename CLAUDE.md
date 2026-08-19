@@ -8,8 +8,15 @@ A Kubernetes LLM inference platform, built layer by layer, on `kind` locally and
 on GPU nodes later. It is infrastructure only: YAML, shell, and a small Python
 benchmark harness. It builds no container image of its own.
 
-Read `README.md` and `docs/superpowers/specs/2026-08-17-llm-serving-stack-design.md`
-first. The spec is authoritative for the phase 1 acceptance criteria.
+Read `README.md` and `docs/UNVERIFIED.md` first. `docs/UNVERIFIED.md` carries
+the nine phase 1 acceptance criteria in full, with the command that settles
+each one.
+
+`docs/superpowers/` holds the design spec and the build plan. **It is a local
+working document and is not in git** (`.gitignore`), so a clone does not get
+it. Where it is cited below, the citation is marked. Anything in it that has to
+survive belongs in an ADR (`docs/adr/`), in `docs/UNVERIFIED.md`, or in a code
+comment.
 
 ## Current state, and why it matters for every claim you write
 
@@ -157,9 +164,10 @@ the workflow itself. Read those comments before you add a step.
 
 **CI is where this repository proves things.** The development machine cannot
 spare the memory, so every suite that runs at all runs here. Six of thirteen
-smoke suites ran nowhere before 2026-08-19; three of them run now. See
-`docs/superpowers/specs/2026-08-19-ci-coverage-design.md` and the CI coverage
-section of `docs/UNVERIFIED.md`.
+smoke suites ran nowhere before 2026-08-19; three of them run now. The CI
+coverage section of `docs/UNVERIFIED.md` is the tracked account. The design
+behind it, `docs/superpowers/specs/2026-08-19-ci-coverage-design.md`, is a
+local working document and is not in git.
 
 The `Record the runner size` step in each cluster job prints `nproc`,
 `free -h`, and `df -h`. Quote those, dated by the run, rather than repeating

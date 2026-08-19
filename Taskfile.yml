@@ -42,10 +42,13 @@ tasks:
     # "Error: repo argo not found". The same gap applied to all eight aliases
     # below. KServe's charts are pulled by OCI reference and need no alias.
     #
-    # kyverno was added on 2026-08-19. It was named in the original plan
-    # (docs/superpowers/plans/2026-08-17-phase-1-local-stack.md:144) and
-    # dropped in implementation, so platform/12-kyverno/install.sh had no
+    # kyverno was added on 2026-08-19. The original build plan named
+    # `helm repo add kyverno https://kyverno.github.io/kyverno` and the alias
+    # was dropped in implementation, so platform/12-kyverno/install.sh had no
     # alias to install from and CI could not install the policy engine at all.
+    # (That plan is docs/superpowers/plans/2026-08-17-phase-1-local-stack.md
+    # line 144 - a local working document, not in git, so the line is quoted
+    # here rather than only cited.)
     #
     # Idempotent: `helm repo add --force-update` overwrites an existing entry
     # instead of failing, so re-running this task is always safe.

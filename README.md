@@ -68,7 +68,14 @@ rewrite.
    applying YAML. So the recovery drill measures time to the first token, not
    time to `Ready`.
 
-Both are verified with dates in the [design spec](docs/superpowers/specs/2026-08-17-llm-serving-stack-design.md).
+Both are recorded with dates in tracked documents. The first is
+[ADR 0005](docs/adr/0005-two-runtimes-one-control-plane.md), which states the
+`linux/amd64`-only constraint and what follows from it. The second is
+[the recovery drill runbook](docs/runbooks/recovery-drill.md), which measures
+the arrival of the first streamed chunk rather than `Ready`.
+
+The fuller evidence log lives in `docs/superpowers/specs/`, which is a local
+working document and is not in git.
 
 ## Layout
 

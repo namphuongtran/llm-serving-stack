@@ -85,7 +85,9 @@ which does emit traces.
 
 ## Unverified by construction: the nine phase 1 acceptance criteria
 
-Design spec, section 15. None has been executed, because no cluster exists.
+From the design spec, section 15, which is a local working document and is
+not in git - so all nine are written out here, in full, rather than cited.
+None has been executed, because no cluster exists.
 Settle all nine at once: `bats tests/` against a live cluster, then record
 the result and the date in `README.md`.
 
@@ -121,10 +123,11 @@ Three exclusions, each for its own reason, all of them checked on 2026-08-19:
 
 - **This file.** Its own references to the marker text in prose would inflate
   the number every time it mentions the pattern it is counting.
-- **`docs/superpowers/specs/`.** A design document records markers about a
-  plan, not claims this repository makes about itself.
-  `2026-08-19-first-run-measurement-design.md` carries three, and it is
-  superseded, so none of the three is owed.
+- **`docs/superpowers/specs/`.** Untracked since 2026-08-19, but still on
+  disk, so `grep -rn` still reaches it and the exclusion is still needed. A
+  design document records markers about a plan, not claims this repository
+  makes about itself. `2026-08-19-first-run-measurement-design.md` carries
+  three, and it is superseded, so none of the three is owed.
 - **`CLAUDE.md`.** Its line 146 is the rule that defines the marker
   (`> **Unmeasured (<date>):**`), not a marker. Without this exclusion the
   command counts the instruction as one of the things it instructs about.
@@ -155,7 +158,9 @@ every row.
 ## CI coverage, changed 2026-08-19, and still unobserved
 
 `.github/workflows/ci.yml` gained a fourth job and two more suites on
-2026-08-19. See `docs/superpowers/specs/2026-08-19-ci-coverage-design.md`.
+2026-08-19. The design behind it is
+`docs/superpowers/specs/2026-08-19-ci-coverage-design.md`, a local working
+document that is not in git. Everything below stands on its own without it.
 
 **None of it has run yet.** The workflow was edited, `actionlint` reports it
 clean, and no push has exercised it. A clean `actionlint` says the YAML is

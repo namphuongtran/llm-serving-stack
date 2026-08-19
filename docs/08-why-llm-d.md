@@ -46,9 +46,10 @@ load-awareness's `1.0` - a mechanism llama.cpp does not participate in at all
 
 ## The specific claim phase 3 will test
 
-The design spec's own evidence log
-(`docs/superpowers/specs/2026-08-17-llm-serving-stack-design.md`, section 17)
-records this, deliberately kept separate from its verified facts table:
+The design spec's own evidence log records this, deliberately kept separate
+from its verified facts table. The claim is quoted in full below, because its
+source (`docs/superpowers/specs/2026-08-17-llm-serving-stack-design.md`,
+section 17) is a local working document and is not in git:
 
 > "the reported 3x output tokens per second and 2x lower time to first token
 > from cache-aware routing on Llama 3.1 70B with four MI300X GPUs... treated

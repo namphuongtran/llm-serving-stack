@@ -26,3 +26,11 @@ bench/raw/
 # section points at it, and that pointer only resolves on a machine that has
 # the directory - it does not arrive with a clone.
 .superpowers/
+
+# Design and planning documents written during the build. Untracked on
+# 2026-08-19 by request, with `git rm --cached -r docs/superpowers`; the files
+# stay on disk. Anything in here that has to survive a clone belongs in an ADR
+# (docs/adr/), in docs/UNVERIFIED.md, or in a code comment. Every reference to
+# this directory that remains in a tracked file is marked "local working
+# document, not in git" so nobody follows a pointer a clone cannot resolve.
+docs/superpowers/
