@@ -3,7 +3,11 @@ kind: Deployment
 metadata:
   name: keycloak
   namespace: llm
-  labels: { app: keycloak }
+  # app.kubernetes.io/part-of is required in namespace llm by
+  # policy/require-labels.yaml (Task 13). This Deployment is not
+  # KServe-generated, so the label is added directly rather than through
+  # spec.predictor.labels propagation the way the InferenceServices need it.
+  labels: { app: keycloak, app.kubernetes.io/part-of: llm-serving-stack }
 spec:
   replicas: 1
   selector: { matchLabels: { app: keycloak } }

@@ -18,6 +18,11 @@ metadata:
 spec:
   predictor:
     minReplicas: 1
+    # Same reasoning as ornith-9b/base/inferenceservice.yaml: policy/require-
+    # labels.yaml matches every Deployment/StatefulSet in namespace llm, with
+    # no name filter, so fallback-small-predictor needs this label too.
+    labels:
+      app.kubernetes.io/part-of: llm-serving-stack
     model:
       modelFormat: { name: gguf }
       runtime: llamacpp-arm64

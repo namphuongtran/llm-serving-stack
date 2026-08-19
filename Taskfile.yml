@@ -94,7 +94,7 @@ tasks:
   policy:
     desc: Run admission policies locally, the same ones the cluster enforces
     cmds:
-      - echo "TODO - evaluate policy/ against rendered manifests (wired in Task 13)"
+      - kyverno test policy/tests
 
   # --- measurement ---------------------------------------------------------
 

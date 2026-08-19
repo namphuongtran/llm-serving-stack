@@ -1,0 +1,32 @@
+# Same CRD confirmation as require-resource-limits.yaml.
+#
+# Verified 2026-08-19 that no floating tag exists anywhere in this
+# repository's rendered overlays before this policy could claim to enforce
+# it (Task 13 step 4): `kustomize build` on every model overlay, `yq` on
+# every platform install script and manifest, and every entry under
+# versions.yaml's `images:` key. Every image reference found
+# (llamacpp_server, keycloak, otel_collector, curl) is already pinned by
+# digest - `images.curl` in particular was fixed in an earlier task (Task 6),
+# not by this policy; there was no floating `curlimages/curl:latest` left to
+# catch by the time this file was written. See
+# .superpowers/sdd/2026-08-17-phase-1-local-stack/batch-e-report.md for the
+# exact commands run and their output.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-floating-tags
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: require-digest-or-fixed-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [llm]
+      validate:
+        message: "image must be pinned by digest, not a floating tag"
+        pattern:
+          spec:
+            containers:
+              - image: "*@sha256:*"

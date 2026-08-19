@@ -1,0 +1,126 @@
+name: ci
+on:
+  pull_request:
+  push: { branches: [main] }
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04-arm   # same architecture as the development machine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/latest/download/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+          sudo snap install yq
+      - name: Every overlay builds
+        run: for o in models/*/overlays/*; do kustomize build "$o" >/dev/null; done
+      - name: No empty version pins
+        run: test "$(yq -r '.. | select(type == "!!str") | select(. == "")' versions.yaml | wc -l)" -eq 0
+
+  policy:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/latest/download/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+      - name: Install Kyverno CLI
+        run: |
+          set -euo pipefail
+          VERSION=$(curl -s https://api.github.com/repos/kyverno/kyverno/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+          curl -sSL "https://github.com/kyverno/kyverno/releases/download/${VERSION}/kyverno-cli_${VERSION}_linux_arm64.tar.gz" | tar xz
+          sudo mv kyverno /usr/local/bin/
+      - name: Policies pass against rendered manifests
+        # Real, but not sufficient on its own: every model overlay renders
+        # InferenceService/ServingRuntime/HTTPRoute objects, none of which
+        # are Pod/Deployment/StatefulSet, so this step alone reports
+        # "pass: 0, fail: 0" no matter what the three policies say - checked
+        # by running it locally against this repository's own overlays,
+        # 2026-08-19. Kept anyway as protection against a future overlay
+        # that emits a raw Pod; the next step is what actually exercises the
+        # three policies.
+        run: |
+          for o in models/*/overlays/*; do
+            kustomize build "$o" > /tmp/rendered.yaml
+            kyverno apply policy/ --resource /tmp/rendered.yaml
+          done
+      - name: Policies reject what they claim to reject
+        run: kyverno test policy/tests
+
+  smoke:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create cluster
+        uses: helm/kind-action@v1
+        with:
+          config: prereqs/kind-cluster.yaml
+      - name: Install tools
+        # kind-action installs kind and kubectl (its own job); it installs
+        # neither helm nor yq nor kustomize, and every platform/*/install.sh
+        # script and the CI model overlay need all three. Missing on a fresh
+        # runner, found by reading the install scripts rather than by
+        # running this job (no cluster exists in this authoring pass to run
+        # it against): the "Install platform" step below would otherwise
+        # fail on its very first `yq -r` call.
+        run: |
+          set -euo pipefail
+          curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/latest/download/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+          sudo snap install yq
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      - name: Add helm repos
+        # Same gap as the tool install above: a fresh runner has none of the
+        # repo aliases platform/*/install.sh scripts assume are already
+        # configured (jetstack for cert-manager, istio for the four Istio
+        # charts, kuadrant for the operator). KServe's charts are pulled by
+        # OCI reference directly and need no repo add.
+        run: |
+          set -euo pipefail
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo add kuadrant https://kuadrant.io/helm-charts
+          helm repo update
+      - name: Install platform
+        run: |
+          set -euo pipefail
+          ./platform/10-istio/gateway-api-crds.sh
+          ./platform/00-cert-manager/install.sh
+          ./platform/10-istio/install.sh
+          ./platform/15-keycloak/install.sh
+          ./platform/20-kserve/install.sh
+          ./platform/25-kuadrant/install.sh
+      - name: Deploy the CI model
+        run: kustomize build models/ornith-9b/overlays/ci | kubectl apply -f -
+      - name: Deploy the OIDC policies
+        # tests/smoke/06-auth-quota.bats needs the AuthPolicy and
+        # TokenRateLimitPolicy in place to see 401/429 at all; without this
+        # step every request in that suite would return 200 unauthenticated,
+        # which is the test passing for the wrong reason - the exact defect
+        # this repository's evidence discipline forbids.
+        run: kubectl apply -f security/oidc/authpolicy.yaml -f security/oidc/tokenratelimitpolicy.yaml
+      - name: Smoke and contract tests
+        run: |
+          sudo apt-get update && sudo apt-get install -y bats
+          bats tests/smoke/01-wave0.bats tests/smoke/02-gateway.bats \
+               tests/smoke/03-identity.bats tests/smoke/04-kserve.bats \
+               tests/smoke/06-auth-quota.bats tests/contract/
+
+  # The runner has 4 vCPU, so the observability, autoscaling, availability,
+  # and benchmark suites are deliberately excluded here: kube-prometheus-stack
+  # plus KEDA plus two replicas of even the 0.5B CI model do not fit
+  # alongside everything the smoke job above already installs, and the node
+  # drain / rolling restart drills need more than one schedulable node's
+  # worth of headroom to mean anything.
+  #
+  # Not present in phase 1, deliberately:
+  #   - multi-arch image build: this repository owns no image. The engine is
+  #     upstream ghcr.io/ggml-org/llama.cpp, pinned by digest.
+  #   - image signing and SBOM: nothing to sign until we build something.
+  # Both arrive with the first image this repository owns. Until then, supply
+  # chain control is the digest pin plus the disallow-floating-tags policy.

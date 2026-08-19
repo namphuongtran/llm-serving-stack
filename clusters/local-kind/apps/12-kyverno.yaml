@@ -1,0 +1,27 @@
+# Wave 1, ahead of KServe (wave 2) and the model overlay (wave 4): the
+# policy engine needs to be admission-live before anything it enforces
+# against gets created. Two sources: the Kyverno operator chart, and this
+# repository's policy/ directory (the three ClusterPolicy objects), so the
+# same Application both installs the engine and applies the policies it
+# evaluates - matching Task 13's own text, "Add a Kyverno Application to
+# clusters/local-kind/apps/ at wave 1, and add policy/ as its source."
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: kyverno }
+  sources:
+    - repoURL: https://kyverno.github.io/kyverno/
+      chart: kyverno
+      targetRevision: 3.8.2
+    - repoURL: https://github.com/namphuongtran/llm-serving-stack
+      targetRevision: HEAD
+      path: policy
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

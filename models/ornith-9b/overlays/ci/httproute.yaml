@@ -1,0 +1,22 @@
+# No fallback backend here (the ci overlay has no fallback-small
+# InferenceService): a single backendRef at weight 100, otherwise identical
+# to overlays/local/httproute.yaml. tests/smoke/06-auth-quota.bats and
+# tests/contract/ both call http://llm.localtest.me/v1/... in CI, which
+# needs this route to exist.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ornith-9b
+  namespace: llm
+spec:
+  parentRefs: [{ name: llm, namespace: istio-system }]
+  hostnames: ["llm.localtest.me"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /v1 }
+      backendRefs:
+        - name: ornith-9b-predictor
+          port: 80
+      timeouts:
+        request: 600s
+        backendRequest: 600s

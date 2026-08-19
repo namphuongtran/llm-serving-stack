@@ -1,0 +1,48 @@
+# Verified against the real kyverno CLI (v1.18.2, installed locally,
+# 2026-08-19): `kyverno create test` scaffolds an older, untyped format this
+# CLI's own `test` command rejects ("unknown field"). This is the schema
+# `kyverno test policy/tests` actually accepts, confirmed by running it
+# against this exact file - see the "resources" field under each result:
+# a list of "namespace/name" strings, not the singular "resource"/"namespace"
+# pair the scaffolder produces.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: policy-tests
+policies:
+  - ../require-resource-limits.yaml
+  - ../disallow-floating-tags.yaml
+  - ../require-labels.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: require-resource-limits
+    rule: check-limits
+    kind: Pod
+    resources: ["llm/good-pod"]
+    result: pass
+  - policy: disallow-floating-tags
+    rule: require-digest-or-fixed-tag
+    kind: Pod
+    resources: ["llm/good-pod"]
+    result: pass
+  - policy: require-labels
+    rule: require-part-of
+    kind: Deployment
+    resources: ["llm/good-deployment"]
+    result: pass
+  - policy: require-resource-limits
+    rule: check-limits
+    kind: Pod
+    resources: ["llm/nolimits-pod"]
+    result: fail
+  - policy: disallow-floating-tags
+    rule: require-digest-or-fixed-tag
+    kind: Pod
+    resources: ["llm/floating-pod"]
+    result: fail
+  - policy: require-labels
+    rule: require-part-of
+    kind: Deployment
+    resources: ["llm/bad-deployment"]
+    result: fail

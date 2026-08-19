@@ -1,0 +1,32 @@
+# Same CRD confirmation as require-resource-limits.yaml.
+#
+# KServe generates the predictor Deployment for every InferenceService in
+# this repository (ornith-9b and fallback-small), so this policy cannot be
+# satisfied by editing a Deployment this repository writes directly for
+# those two. It is satisfied instead by `spec.predictor.labels` on each
+# InferenceService, which KServe's own reconciler propagates onto the
+# generated Deployment's top-level ObjectMeta.Labels - confirmed at the
+# source of the pinned v0.20.0 tag, not assumed: see the comment on
+# `models/ornith-9b/base/inferenceservice.yaml`'s `spec.predictor.labels` for
+# the exact file, function, and line this was read from. Keycloak's
+# Deployment (platform/15-keycloak/keycloak.yaml) is not KServe-generated, so
+# its label was added directly instead.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-labels
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: require-part-of
+      match:
+        any:
+          - resources:
+              kinds: [Deployment, StatefulSet]
+              namespaces: [llm]
+      validate:
+        message: "app.kubernetes.io/part-of is required so ownership is queryable"
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/part-of: "?*"

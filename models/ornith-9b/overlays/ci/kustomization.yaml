@@ -1,0 +1,16 @@
+# GitHub arm64 runners have 4 vCPU and no GPU (Task 13, CI overlay). Same
+# base InferenceService and the same llamacpp-arm64 ServingRuntime as
+# overlays/local, so the wiring under test is identical; only the model and
+# the resource footprint change. No PDB, ScaledObject, fallback, or retry
+# policy here: those exist to prove HA and autoscaling, which the smoke job
+# this overlay backs does not exercise (see .github/workflows/ci.yml's own
+# comment on what it deliberately excludes).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: llm
+resources:
+  - ../../base
+  - ../../../../runtimes/llamacpp-arm64
+  - httproute.yaml
+patches:
+  - path: patch-model.yaml

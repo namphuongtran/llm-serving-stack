@@ -1,0 +1,34 @@
+# Shape and apiVersion confirmed against the installed CRD, not carried over
+# from memory: `helm template` of kyverno/kyverno --version 3.8.2 (the
+# version pinned as charts.kyverno in versions.yaml, installed via the Argo
+# CD Application clusters/local-kind/apps/12-kyverno.yaml, wave 1) on
+# 2026-08-19 renders clusterpolicies.kyverno.io with exactly one
+# served+storage version, v1. `spec.validationFailureAction`,
+# `spec.rules[].match.any[].resources.{kinds,namespaces}`, and
+# `spec.rules[].validate.{message,pattern}` all exist at those paths in that
+# schema. `spec.validationFailureAction` is marked deprecated in favour of
+# the same field nested under `spec.rules[].validate.failureAction`, but it
+# is still present and functional in the schema at this version, so the
+# brief's literal top-level form is kept rather than migrated silently.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: check-limits
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [llm]
+      validate:
+        message: "cpu and memory limits are required: an unbounded model server can evict the control plane"
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"

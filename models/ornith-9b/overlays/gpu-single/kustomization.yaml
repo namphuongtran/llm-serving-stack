@@ -1,0 +1,14 @@
+# Deliberately empty. This overlay is phase 2's home (README.md); nothing is
+# built here yet. It exists as a valid, buildable kustomization rather than a
+# bare README-only directory because Task 13's own test and CI step
+# ("every overlay in the repository builds", tests/smoke/11-policy.bats and
+# .github/workflows/ci.yml) walk `models/*/overlays/*` and require every
+# directory found there to build, not merely the ones with real content.
+# Found during Task 13's static verification, 2026-08-19: without this file,
+# `kustomize build` fails here with "unable to find kustomization.yaml", which
+# is a real, pre-existing defect independent of anything Task 13 built - see
+# .superpowers/sdd/2026-08-17-phase-1-local-stack/batch-e-report.md.
+# Replace this with real resources when phase 2 starts.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []

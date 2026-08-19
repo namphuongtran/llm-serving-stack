@@ -8,6 +8,22 @@ metadata:
 spec:
   predictor:
     minReplicas: 1          # never zero by default: cold start is minutes
+    # policy/require-labels.yaml needs app.kubernetes.io/part-of on the
+    # generated Deployment, which this repository does not write directly:
+    # KServe's RawDeployment reconciler generates that Deployment. Confirmed
+    # at the source of the pinned v0.20.0 tag, not assumed, 2026-08-19:
+    #   pkg/controller/v1beta1/inferenceservice/components/predictor.go,
+    #   buildObjectMeta(): `predictorLabels := isvc.Spec.Predictor.Labels`,
+    #   merged into the returned ObjectMeta via `utils.Union(...)`.
+    #   pkg/controller/v1beta1/inferenceservice/reconcilers/deployment/
+    #   deployment_reconciler.go, createRawDefaultDeployment(): the
+    #   Deployment's own top-level `ObjectMeta: componentMeta` is that same
+    #   value, used directly (not just on the pod template, which derives a
+    #   modified copy from it). So a label set here reaches the Deployment
+    #   object the policy actually inspects. Setting it here, not weakening
+    #   the policy, is the fix Task 13's brief calls for.
+    labels:
+      app.kubernetes.io/part-of: llm-serving-stack
     model:
       modelFormat: { name: gguf }
       runtime: llamacpp-arm64

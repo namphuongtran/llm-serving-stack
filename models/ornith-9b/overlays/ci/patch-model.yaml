@@ -1,0 +1,62 @@
+# Same served name (ornith-9b) as every other overlay, so the smoke and
+# contract tests that name that model string need no CI-specific branch.
+# Only the weights and the resource footprint change.
+#
+# Model: models/ornith-9b/base/model.yaml's `model.ci` block
+# (Qwen/Qwen2.5-0.5B-Instruct-GGUF, qwen2.5-0.5b-instruct-q4_k_m.gguf, about
+# 0.49 GB), pinned there in Task 10 for this exact overlay's use (see that
+# file's own comment: "A small model pinned ahead of Task 13"). Resolved by
+# the same two independent methods as the primary model's own pin (HF
+# `?blobs=true` API `.lfs.sha256`, and the `x-linked-etag` response header on
+# the file's own resolve URL), both agreeing, neither downloading the file;
+# not re-resolved here, only reused.
+#
+# Resources: a 0.5B Q4 model on CPU needs a fraction of the primary's
+# footprint, the same reasoning as fallback.yaml's fallback-small
+# InferenceService (same model class). ServingRuntime's own
+# `runtimes/llamacpp-arm64/servingruntime.yaml` requests 2 CPU / 8Gi and
+# limits 6 CPU / 12Gi, sized for the primary 9B model on a 32 GB laptop, far
+# too large for a 4 vCPU GitHub runner; KServe merges predictor.containers[]
+# (matched by container name) onto the ServingRuntime's own container spec,
+# so this override, not a runtimes/ change, is what keeps
+# runtimes/llamacpp-arm64/servingruntime.yaml model-independent.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ornith-9b
+  namespace: llm
+spec:
+  predictor:
+    containers:
+      - name: kserve-container
+        resources:
+          requests: { cpu: "1", memory: 1Gi }
+          limits: { cpu: "2", memory: 2Gi }
+        volumeMounts:
+          - { name: models, mountPath: /mnt/models }
+    initContainers:
+      - name: fetch-weights
+        # Same pinned curl image as every other fetch-weights init
+        # container; see versions.yaml (images.curl).
+        image: curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -eu
+            command -v sha256sum >/dev/null || { echo "sha256sum missing in init image" >&2; exit 1; }
+            if [ -f /mnt/models/model.gguf ]; then
+              echo "weights already present"; exit 0
+            fi
+            curl -fL --retry 3 -o /mnt/models/model.gguf \
+              "https://huggingface.co/${HF_REPO}/resolve/main/${HF_FILE}"
+            echo "${SHA256}  /mnt/models/model.gguf" | sha256sum -c -
+        env:
+          # Values come from models/ornith-9b/base/model.yaml, model.ci.
+          - { name: HF_REPO, value: "Qwen/Qwen2.5-0.5B-Instruct-GGUF" }
+          - { name: HF_FILE, value: "qwen2.5-0.5b-instruct-q4_k_m.gguf" }
+          - { name: SHA256, value: "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db" }
+        volumeMounts:
+          - { name: models, mountPath: /mnt/models }
+    volumes:
+      - name: models
+        emptyDir: { sizeLimit: 2Gi }

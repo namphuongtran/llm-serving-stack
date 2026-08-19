@@ -1,0 +1,8 @@
+# Deliberately empty. This overlay is phase 3's home (README.md); nothing is
+# built here yet. Same reasoning as ../gpu-single/kustomization.yaml: Task 13's
+# "every overlay in the repository builds" test and CI step walk
+# `models/*/overlays/*` and require every directory found there to build.
+# Replace this with real resources when phase 3 starts.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []
