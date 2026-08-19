@@ -13,7 +13,24 @@ spec:
   destination: { server: https://kubernetes.default.svc, namespace: argocd }
   source:
     repoURL: https://github.com/namphuongtran/llm-serving-stack
-    targetRevision: HEAD
+    # NOT `HEAD`, which is what this said until 2026-08-20.
+    #
+    # Argo CD resolves `HEAD` to the remote's default branch. This remote's
+    # default branch is `main`, and on 2026-08-20 `git ls-tree --name-only
+    # origin/main` printed
+    #   OrderShare.sln
+    #   OrderShare
+    #   README.md
+    #   packages
+    # - an unrelated C# project. The stack lives only on the branch named
+    # below. So the pull path failed at its first act, with root-app reporting
+    #   ComparisonError - clusters/local-kind/apps: app path does not exist
+    # and creating none of its 15 children. See clusters/local-kind/wait-for-sync.sh
+    # for why `task local:up` then reported success anyway.
+    #
+    # Change this to HEAD when, and only when, `main` holds this stack. Until
+    # then HEAD points at a different program.
+    targetRevision: rebuild/llm-serving-stack
     path: clusters/local-kind/apps
     directory:
       recurse: false

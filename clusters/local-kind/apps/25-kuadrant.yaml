@@ -19,7 +19,10 @@ spec:
       chart: kuadrant-operator
       targetRevision: 1.5.2
     - repoURL: https://github.com/namphuongtran/llm-serving-stack
-      targetRevision: HEAD
+      # Not HEAD - this remote's default branch holds an unrelated project.
+      # The full record is on clusters/local-kind/root-app.yaml's own
+      # targetRevision, found 2026-08-20 on the first real run of the pull path.
+      targetRevision: rebuild/llm-serving-stack
       path: platform/25-kuadrant
       directory:
         recurse: false

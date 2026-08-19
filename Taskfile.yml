@@ -76,8 +76,20 @@ tasks:
     cmds:
       - task: local:cluster
       - ./platform/50-argocd/install.sh
-      - kubectl apply -f clusters/local-kind/root-app.yaml
-      - kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy applications.argoproj.io --all --timeout=30m
+      # --context, not bare kubectl. local:cluster has a `status:` guard, so on
+      # a machine that already has the cluster this task starts here, with
+      # whatever context happened to be current. On this machine that has been
+      # `docker-desktop`; bench/recovery-drill.sh:16-27 carries the same fix and
+      # the reason.
+      - kubectl --context kind-{{.CLUSTER_NAME}} apply -f clusters/local-kind/root-app.yaml
+      # This was an inline `kubectl wait --for=jsonpath='{.status.health.status}'=Healthy
+      # applications.argoproj.io --all --timeout=30m` until 2026-08-20. On the
+      # first run the pull path ever had, that line exited 0 in ONE SECOND with
+      # zero child Applications created and nothing deployed, because an Argo CD
+      # Application that failed to read its git path still reports
+      # `health.status: Healthy`. The script asserts sync status, the child
+      # count, and health, in that order. Its header holds the full record.
+      - ./clusters/local-kind/wait-for-sync.sh 30m
 
   local:cluster:
     desc: Create the kind cluster
