@@ -1,13 +1,17 @@
-# Wave 4, alongside the model: the AuthPolicy and TokenRateLimitPolicy both
-# target the ornith-9b HTTPRoute the model overlay creates, so this
-# Application must not sync before it exists.
+# Wave 5, one wave AFTER the model. The AuthPolicy and TokenRateLimitPolicy
+# both target the ornith-9b-openai HTTPRoute the model overlay creates, so
+# this Application must not sync before it exists. Wave 4 (which the model
+# Application uses) would not give that ordering: Argo CD syncs everything in
+# one wave concurrently and only waits between waves, so "alongside the
+# model" and "after the model" are not the same thing. The comment used to
+# claim the ordering while the wave number did not provide it.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: security-oidc
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "5"
 spec:
   project: default
   destination: { server: https://kubernetes.default.svc, namespace: llm }

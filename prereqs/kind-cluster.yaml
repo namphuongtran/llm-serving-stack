@@ -1,8 +1,17 @@
+# Node image is pinned on every node, not left to whatever the local `kind`
+# binary defaults to. The value is versions.yaml's `kubernetes.kind_node`,
+# written in literally rather than templated: this file is consumed by `kind
+# create cluster --config`, which does no substitution, and Taskfile.yml
+# passes no --image. Before this, kind_node was a pin nothing read.
+#
+# Keep the three copies below in step with versions.yaml.
+# tests/contract/03-images.bats asserts they match, so a drift fails a test.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: llm-serving-stack
 nodes:
   - role: control-plane
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
     kubeadmConfigPatches:
       - |
         kind: InitConfiguration
@@ -17,4 +26,6 @@ nodes:
         hostPort: 443
         protocol: TCP
   - role: worker
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
   - role: worker
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5

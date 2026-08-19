@@ -33,10 +33,36 @@ tasks:
     cmds:
       - ./prereqs/preflight.sh
 
+  helm:repos:
+    desc: Add and update every Helm repository the platform install scripts use
+    # Every platform/*/install.sh names a chart by repo alias
+    # (jetstack/cert-manager, istio/base, argo/argo-cd, ...). Nothing else in
+    # this repository ever ran `helm repo add`, so on a clean machine
+    # `task local:up` used to die at platform/50-argocd/install.sh with
+    # "Error: repo argo not found". The same gap applied to all seven aliases
+    # below. KServe's charts are pulled by OCI reference and need no alias.
+    #
+    # Idempotent: `helm repo add --force-update` overwrites an existing entry
+    # instead of failing, so re-running this task is always safe.
+    # URLs checked 2026-08-19 (HTTP 200 on <url>/index.yaml for all seven).
+    cmds:
+      - helm repo add jetstack https://charts.jetstack.io --force-update
+      - helm repo add istio https://istio-release.storage.googleapis.com/charts --force-update
+      - helm repo add kedacore https://kedacore.github.io/charts --force-update
+      - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+      - helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
+      - helm repo add kuadrant https://kuadrant.io/helm-charts --force-update
+      - helm repo add argo https://argoproj.github.io/argo-helm --force-update
+      - helm repo update
+
   # --- local lifecycle -----------------------------------------------------
 
   local:up:
     desc: Empty machine to a ready service (phase 1)
+    # helm:repos runs before every cmd below, so preflight (a dep of
+    # local:cluster) can check the aliases exist rather than only that the
+    # helm binary does.
+    deps: [helm:repos]
     cmds:
       - task: local:cluster
       - ./platform/50-argocd/install.sh

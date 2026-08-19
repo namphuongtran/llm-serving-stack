@@ -16,6 +16,17 @@ mem_gib=$((mem_gib / 1073741824))
 [ "$cpus" -ge 8 ] || fail "docker has $cpus cpus, need 8 (Docker Desktop > Settings > Resources)"
 [ "$mem_gib" -ge 19 ] || fail "docker has ${mem_gib}GiB, need 20 (Docker Desktop > Settings > Resources)"
 
+# Every platform/*/install.sh names its chart by repo alias, so a present
+# `helm` binary is not enough: without these aliases the first install script
+# dies with "Error: repo <name> not found". `task helm:repos` adds all seven
+# (and `task local:up` depends on it); this check is what makes a missing one
+# fail here, with the fix named, instead of halfway through an install.
+missing_repos=""
+for repo in jetstack istio kedacore prometheus-community open-telemetry kuadrant argo; do
+  helm repo list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "$repo" || missing_repos="$missing_repos $repo"
+done
+[ -z "$missing_repos" ] || fail "missing helm repos:$missing_repos (run: task helm:repos)"
+
 arch=$(uname -m)
 [ "$arch" = "arm64" ] || printf 'preflight: warning: arch is %s, this plan assumes arm64\n' "$arch"
 

@@ -28,6 +28,24 @@ spec:
       chart: kube-prometheus-stack
       targetRevision: 88.5.0
       helm:
+        # Argo CD defaults a Helm source's release name to the APPLICATION
+        # name, which here is "observability". Left at that default the chart
+        # renders Service `observability-kube-prometh-prometheus` and a
+        # serviceMonitorSelector matching `release: observability`, while
+        # four consumers in this repository hardcode the
+        # `kube-prometheus-stack` release name that
+        # platform/30-observability/install.sh uses:
+        #   - models/ornith-9b/overlays/local/scaledobject.yaml serverAddress
+        #   - tests/smoke/05-observability.bats port-forward
+        #   - platform/30-observability/pushgateway-values.yaml additionalLabels
+        #   - this file's own pushgateway serviceMonitor.additionalLabels
+        # The last two matter most: values-prometheus.yaml deliberately leaves
+        # serviceMonitorSelectorNilUsesHelmValues at the chart default true,
+        # so a mismatched release label means the Pushgateway ServiceMonitor
+        # is never selected, push_time_seconds is never scraped, and
+        # TTFTProberStale - the alert whose only job is catching a dead
+        # prober - can never fire.
+        releaseName: kube-prometheus-stack
         valuesObject:
           prometheus:
             prometheusSpec:
@@ -48,6 +66,11 @@ spec:
       chart: opentelemetry-collector
       targetRevision: 0.170.0
       helm:
+        # Same release name platform/30-observability/install.sh uses. The
+        # rendered object names do not depend on it here (fullnameOverride
+        # below fixes them), but the two install paths should not differ in
+        # the instance labels they stamp on the same objects.
+        releaseName: otel-collector
         valuesObject:
           mode: deployment
           fullnameOverride: otel-collector
@@ -84,6 +107,8 @@ spec:
       chart: prometheus-pushgateway
       targetRevision: 3.8.0
       helm:
+        # Same reasoning as the otel-collector source above.
+        releaseName: pushgateway
         valuesObject:
           fullnameOverride: pushgateway
           resources:
