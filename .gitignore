@@ -18,3 +18,11 @@ tmp/
 
 # Benchmark raw output that has not been curated into a dated result directory
 bench/raw/
+
+# Agent working notes. Task briefs, per-batch reports, and review diffs from
+# the phase 1 build. Nothing here was ever tracked (confirmed 2026-08-19 with
+# `git ls-files .superpowers`, which returned nothing), so this rule only
+# stops the directory appearing in `git status`. CLAUDE.md's "Working notes"
+# section points at it, and that pointer only resolves on a machine that has
+# the directory - it does not arrive with a clone.
+.superpowers/
