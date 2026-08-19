@@ -25,5 +25,25 @@ grafana:
   adminPassword: admin
   sidecar:
     dashboards: { enabled: true, label: grafana_dashboard }
+    # Tempo datasource, added 2026-08-19. Without it Grafana has a trace
+    # backend running beside it and no way to reach it, so the traces the
+    # gateway produces would arrive in Tempo and be unreadable.
+    #
+    # `additionalDataSources` was confirmed to exist at line 1625 of
+    # `helm show values prometheus-community/kube-prometheus-stack --version
+    # 88.5.0` on 2026-08-19, and the rendered datasource ConfigMap was read
+    # afterwards rather than assumed.
+    #
+    # URL from platform/30-observability/tempo.yaml, which declares
+    # Service/tempo in namespace observability with port 3200 named http.
+    # `access: proxy` so the browser never needs to reach Tempo directly; only
+    # the Grafana pod does.
+  additionalDataSources:
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      access: proxy
+      url: http://tempo.observability.svc.cluster.local:3200
+      isDefault: false
 alertmanager:
   enabled: false

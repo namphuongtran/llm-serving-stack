@@ -55,12 +55,25 @@ config:
         - { key: gen_ai.system, value: llamacpp, action: upsert }
         - { key: gen_ai.request.model, value: ornith-9b, action: upsert }
   exporters:
-    # No trace backend in phase 1. debug logs whatever arrives, which today is
-    # nothing: this pipeline has zero producers until phase 2 adds vLLM.
+    # Tempo, added 2026-08-19. Until then this pipeline had a receiver and no
+    # backend at all, and its exporter list was `[debug]` alone.
+    #
+    # Service DNS name and port from platform/30-observability/tempo.yaml,
+    # which declares Service/tempo in namespace observability with port 4317
+    # named otlp-grpc. tls.insecure because that listener is plaintext - both
+    # ends are inside one cluster, and this repository adds no certificate
+    # anybody asked for.
+    otlp/tempo:
+      endpoint: tempo.observability.svc.cluster.local:4317
+      tls: { insecure: true }
+    # Kept alongside Tempo rather than replaced by it. At `basic` this is one
+    # line per batch, and while the producer is still Untried it is the
+    # cheapest way to answer "did anything arrive at all" from
+    # `kubectl logs deploy/otel-collector` without opening Grafana.
     debug: { verbosity: basic }
   service:
     pipelines:
       traces:
         receivers: [otlp]
         processors: [attributes/genai, batch]
-        exporters: [debug]
+        exporters: [otlp/tempo, debug]

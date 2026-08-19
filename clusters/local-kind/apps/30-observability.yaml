@@ -60,6 +60,17 @@ spec:
             adminPassword: admin
             sidecar:
               dashboards: { enabled: true, label: grafana_dashboard }
+            # The rendered copy of platform/30-observability/values-prometheus.yaml's
+            # additionalDataSources block. An Argo CD Application cannot read a
+            # values file out of this repository, so changing one means changing
+            # both - grep for tempo.observability.svc.cluster.local.
+            additionalDataSources:
+              - name: Tempo
+                type: tempo
+                uid: tempo
+                access: proxy
+                url: http://tempo.observability.svc.cluster.local:3200
+                isDefault: false
           alertmanager:
             enabled: false
     - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts

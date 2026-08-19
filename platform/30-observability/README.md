@@ -48,6 +48,24 @@ the table of panels this engine cannot fill. That ADR is not edited here -
 ADRs are append-only, and its "cannot fill" table was true when written and is
 still true. What changed is which of the *available* series this layer reads.
 
+## Traces
+
+`tempo.yaml` runs Grafana Tempo, and the OTel Collector exports to it. Grafana
+gets a Tempo datasource from `values-prometheus.yaml`.
+
+Two things to know before looking for a trace.
+
+**It is hand-written, not a Helm chart.** Both upstream Tempo charts are marked
+`deprecated: true` in their own `Chart.yaml`, and `grafana/tempo` additionally
+cannot render with its receivers narrowed to OTLP - its Service template
+dereferences the Jaeger receiver with no guard. `tempo.yaml`'s header carries
+the evidence and the commands that produced it.
+
+**Nothing produces a span yet.** llama.cpp emits none at all (ADR 0005), so
+until gateway tracing is turned on, Tempo is a correctly wired backend with an
+empty database. The pipeline is `producer -> OTel Collector -> Tempo ->
+Grafana`, and only the first arrow is missing.
+
 ## Two signals still missing on purpose
 
 - **Prefix cache hit rate and KV cache utilisation.** vLLM only. Phase 2.

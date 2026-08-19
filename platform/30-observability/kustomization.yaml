@@ -20,6 +20,12 @@ resources:
   - recording-rules.yaml
   - ttft-prober-cronjob.yaml
   - podmonitor.yaml
+  # Added 2026-08-19. Tempo is plain manifests rather than a fifth Helm source
+  # on the Argo CD Application, because both upstream Tempo charts are
+  # deprecated - tempo.yaml's own header carries the evidence. A happy
+  # side-effect: listing it here is the whole of the GitOps wiring, since the
+  # Application already sources this directory as a path.
+  - tempo.yaml
 configMapGenerator:
   - name: llm-serving-dashboard
     files:

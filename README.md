@@ -151,9 +151,10 @@ than a number nobody has measured. Find those with:
 grep -rnE 'Untried \(20[0-9]{2}-' . --exclude-dir=.git --exclude-dir=docs/superpowers
 ```
 
-which returned **6** on 2026-08-19, in this file, `platform/12-kyverno/install.sh`,
-`platform/30-observability/podmonitor.yaml`, and three in
-`.github/workflows/ci.yml`.
+which returned **8** on 2026-08-19, across six files: this one,
+`platform/12-kyverno/install.sh`, `platform/30-observability/podmonitor.yaml`,
+`platform/30-observability/tempo.yaml`, `tests/smoke/05-observability.bats`, and
+three in `.github/workflows/ci.yml`.
 
 The date digits in that pattern are not decoration. Without them the command
 matches the line that documents it, and reports 7. The `Unmeasured` pattern

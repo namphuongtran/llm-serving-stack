@@ -3,7 +3,11 @@ setup() {
   PROM="http://127.0.0.1:9090"
 }
 
-teardown() { [ -n "${PF_PID:-}" ] && kill "$PF_PID" 2>/dev/null || true; }
+teardown() {
+  [ -n "${PF_PID:-}" ] && kill "$PF_PID" 2>/dev/null || true
+  [ -n "${GF_PID:-}" ] && kill "$GF_PID" 2>/dev/null || true
+  true
+}
 
 # The service name was confirmed by rendering the pinned kube-prometheus-stack
 # chart (helm template kube-prometheus-stack prometheus-community/kube-prometheus-stack
@@ -16,6 +20,20 @@ start_prom_portforward() {
     port-forward svc/kube-prometheus-stack-prometheus 9090:9090 >/dev/null 2>&1 &
   PF_PID=$!
   wait_for 60 "prometheus port-forward" bash -c "curl -sf $PROM/-/ready"
+}
+
+# Service name and port confirmed by rendering the pinned chart with this
+# repository's own release name on 2026-08-19:
+#   helm template kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     --version 88.5.0 -n observability -f platform/30-observability/values-prometheus.yaml
+# emits Service/kube-prometheus-stack-grafana on port 80. The admin password is
+# `admin`, set in that same values file - this is a local kind cluster and the
+# credential is already in git.
+start_grafana_portforward() {
+  kubectl --context "$KUBECTL_CONTEXT" -n observability \
+    port-forward svc/kube-prometheus-stack-grafana 3000:80 >/dev/null 2>&1 &
+  GF_PID=$!
+  wait_for 60 "grafana port-forward" bash -c "curl -sf http://127.0.0.1:3000/api/health"
 }
 
 @test "prometheus is scraping the predictor" {
@@ -102,4 +120,40 @@ start_prom_portforward() {
     run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode \"query=$series\" | jq -r '.data.result | length'"
     [ "$output" -ge 1 ]
   done
+}
+
+# Added 2026-08-19 with platform/30-observability/tempo.yaml.
+@test "tempo is available" {
+  run k get deploy -n observability tempo -o jsonpath='{.status.availableReplicas}'
+  [ "$output" -ge 1 ]
+}
+
+# Asks Grafana, not the ConfigMap. A ConfigMap holding the right YAML proves
+# the values file reached the cluster; it does not prove Grafana parsed it or
+# that the datasource works. This also guards the duplication this repository
+# accepts by necessity: the same additionalDataSources block is written twice,
+# in platform/30-observability/values-prometheus.yaml and inline in
+# clusters/local-kind/apps/30-observability.yaml, because an Argo CD
+# Application cannot read a values file out of this repository. If the GitOps
+# copy is edited and the other is not, this is what notices.
+@test "grafana is configured with a tempo datasource" {
+  start_grafana_portforward
+  run bash -c "curl -sf -u admin:admin http://127.0.0.1:3000/api/datasources | jq -r '[.[] | select(.type == \"tempo\")] | length'"
+  [ "$output" -ge 1 ]
+}
+
+# The trace path has no producer yet: llama.cpp emits no spans (ADR 0005), and
+# gateway tracing is a separate change. So this asserts the pipeline is wired,
+# not that traces flow - Tempo answering /ready through its own Service is what
+# says the collector's exporter has somewhere to send to.
+#
+# > **Untried (2026-08-19):** that any span ever reaches Tempo. Nothing
+# > produces one yet. When gateway tracing lands, the test to add here is a
+# > TraceQL query returning at least one trace after tests/contract/ has run.
+@test "tempo answers ready through its service, so the collector has a target" {
+  run k -n observability run tempo-ready-probe --rm -i --restart=Never \
+    --image=curlimages/curl:8.21.0@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84 \
+    --command -- curl -sf -o /dev/null -w '%{http_code}' http://tempo.observability.svc.cluster.local:3200/ready
+  [ "$status" -eq 0 ]
+  [[ "$output" == *200* ]]
 }
