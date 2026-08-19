@@ -34,7 +34,7 @@ spec:
       # Pinned digest, read from versions.yaml (images.llamacpp_server) on
       # 2026-08-19. This is not a placeholder: the value below is the same
       # string `yq -r '.images.llamacpp_server' versions.yaml` prints.
-      image: ghcr.io/ggml-org/llama.cpp@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b
+      image: ghcr.io/ggml-org/llama.cpp:server-b10481@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b
       # No --alias here: the served model name is a per-model fact and belongs
       # in the model's own InferenceService (spec.predictor.model.args), which
       # KServe appends to this list. Naming a specific model in this runtime

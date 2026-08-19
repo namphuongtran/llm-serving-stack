@@ -38,7 +38,7 @@ spec:
       - name: fetch-weights
         # Same pinned curl image as every other fetch-weights init
         # container; see versions.yaml (images.curl).
-        image: curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
+        image: curlimages/curl:8.21.0@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
         command: ["/bin/sh", "-c"]
         args:
           - |

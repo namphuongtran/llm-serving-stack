@@ -23,7 +23,7 @@ spec:
           # clusters/local-kind/apps/15-keycloak.yaml never runs
           # install.sh) would otherwise leave a placeholder committed here.
           # Value from versions.yaml images.keycloak, read 2026-08-19.
-          image: quay.io/keycloak/keycloak@sha256:89d56312ace1d9b0bf8168f1a92ea135ba185d2844285f7651cb50774e47c1d8
+          image: quay.io/keycloak/keycloak:26.7.1@sha256:89d56312ace1d9b0bf8168f1a92ea135ba185d2844285f7651cb50774e47c1d8
           args: ["start-dev", "--import-realm"]
           env:
             - { name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin }

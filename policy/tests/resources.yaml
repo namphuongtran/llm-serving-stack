@@ -157,3 +157,31 @@ spec:
       resources:
         requests: { cpu: 100m, memory: 64Mi }
         limits: { cpu: 100m, memory: 64Mi }
+---
+# Added 2026-08-19, when every image reference in this repository changed from
+# `name@sha256:digest` to `name:tag@sha256:digest` so a reader can see which
+# version is running. Nothing tested that form before: every fixture above is
+# a bare digest, so all of them would still pass if the policy's pattern had
+# silently stopped accepting a tag in front of the `@`.
+#
+# This fixture is the guard. `disallow-floating-tags.yaml`'s pattern is
+# `*@sha256:*`, and the leading `*` is what lets `busybox:1.36@sha256:...`
+# through. If someone tightens that pattern to anchor at the repository name,
+# every real workload in this repository stops being admitted, and this is the
+# test that says so.
+#
+# The tag is `1.36` and the digest is all zeroes, for the same reason as every
+# fixture above - see the header. `floating-pod` remains the negative case: a
+# tag with no digest.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tagged-digest-pod
+  namespace: llm
+spec:
+  containers:
+    - name: c
+      image: busybox:1.36@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      resources:
+        requests: { cpu: 100m, memory: 64Mi }
+        limits: { cpu: 100m, memory: 64Mi }

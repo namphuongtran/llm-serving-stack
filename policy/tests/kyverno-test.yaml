@@ -41,6 +41,14 @@ results:
     kind: Pod
     resources: ["llm/floating-pod"]
     result: fail
+  # A tag in front of the digest must still pass. This is the form every real
+  # image reference in this repository took on 2026-08-19; see the comment on
+  # tagged-digest-pod in resources.yaml for why the case exists.
+  - policy: disallow-floating-tags
+    rule: require-digest-or-fixed-tag
+    kind: Pod
+    resources: ["llm/tagged-digest-pod"]
+    result: pass
   - policy: require-labels
     rule: require-part-of
     kind: Deployment

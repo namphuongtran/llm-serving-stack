@@ -51,7 +51,7 @@ spec:
     spec:
       containers:
         - name: echo
-          image: ealen/echo-server@sha256:74afa5ffd1f0cd81bea9a3ef2f27341dc7e93ed221f2817a2119c230c25cc8a2
+          image: ealen/echo-server:0.9.2@sha256:74afa5ffd1f0cd81bea9a3ef2f27341dc7e93ed221f2817a2119c230c25cc8a2
           ports: [{ containerPort: 80 }]
           resources:
             requests: { cpu: 10m, memory: 32Mi }

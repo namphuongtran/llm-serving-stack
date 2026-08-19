@@ -13,7 +13,7 @@ setup() { load '../lib/helpers'; }
 # image is executed.
 @test "a pod without resource limits is rejected" {
   run k -n llm run nolimits \
-    --image=curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84 \
+    --image=curlimages/curl:8.21.0@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84 \
     --restart=Never --command -- sleep 1
   [ "$status" -ne 0 ]
 }

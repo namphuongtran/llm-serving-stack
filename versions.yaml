@@ -150,6 +150,39 @@ kuadrant:
   operator_chart_version: "1.5.2"
 
 images:
+  # FORM: name:tag@sha256:digest. The tag was added to every entry on
+  # 2026-08-19, because a bare digest tells a reader nothing about which
+  # version they are running.
+  #
+  # The digest is what pulls. A container runtime ignores the tag whenever a
+  # digest is present, so adding one changed nothing about what runs. The tag
+  # is a label for people.
+  #
+  # THE TAG AND THE DIGEST DO NOT NAME THE SAME OBJECT, and that is expected,
+  # not a mistake. The tag names the multi-architecture index. The digest names
+  # that index's linux/arm64 child, which is what this repository has always
+  # pinned and why CI runs on ubuntu-24.04-arm (docs/adr/0005). Anyone checking
+  # the two against each other will find they differ. They are meant to.
+  #
+  # Every tag below was verified on 2026-08-19 by fetching the tag's index
+  # straight from its registry over HTTPS and confirming the pinned digest is
+  # one of its children. No Docker daemon was involved, so the check is
+  # repeatable on a machine that cannot start one. The shape of the check, for
+  # a Docker Hub image:
+  #   TOK=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:<repo>:pull" | jq -r .token)
+  #   curl -s -H "Authorization: Bearer $TOK" \
+  #        -H "Accept: application/vnd.oci.image.index.v1+json" \
+  #        "https://registry-1.docker.io/v2/<repo>/manifests/<tag>" \
+  #     | jq -r '.manifests[].digest'
+  # ghcr.io and quay.io answer the same shape; ghcr.io's token endpoint is
+  # https://ghcr.io/token?scope=repository:<repo>:pull&service=ghcr.io and
+  # quay.io needs no token for a public repository.
+  #
+  # Pinning the INDEX digest instead, so that tag and digest agree, was
+  # considered on 2026-08-19 and rejected. It would change what gets pulled and
+  # would undo the deliberate arm64-only pinning. That is a phase 2 question
+  # about amd64 GPU nodes, not a readability fix.
+  #
   # This block is the single source of truth for image digests, but not the
   # only place they appear: an Argo CD Application is one git object and
   # cannot read this file, so clusters/local-kind/apps/30-observability.yaml
@@ -160,8 +193,8 @@ images:
   #
   # read 2026-08-19 via `docker buildx imagetools inspect <ref>`; digest is the linux/arm64
   # manifest digest, confirmed present in the same inspect output for both images.
-  llamacpp_server: "ghcr.io/ggml-org/llama.cpp@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b"
-  keycloak: "quay.io/keycloak/keycloak@sha256:89d56312ace1d9b0bf8168f1a92ea135ba185d2844285f7651cb50774e47c1d8"
+  llamacpp_server: "ghcr.io/ggml-org/llama.cpp:server-b10481@sha256:5be603b8cbf1ee9e078232ae5e1d02794e7540e210299b53bac04cbc6debc77b"
+  keycloak: "quay.io/keycloak/keycloak:26.7.1@sha256:89d56312ace1d9b0bf8168f1a92ea135ba185d2844285f7651cb50774e47c1d8"
   # read 2026-08-19 via `docker buildx imagetools inspect --format '{{json .Image}}'
   # ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector@sha256:...`
   # (registry-only, no daemon needed); architecture field is "arm64" directly.
@@ -171,13 +204,13 @@ images:
   # platform/30-observability/otel-collector.yaml only configures the otlp
   # receiver, batch and attributes processors, and the debug exporter, all of
   # which ship in core, so the smaller core image is enough.
-  otel_collector: "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector@sha256:0969430778574e768e0a262fb940c2955b0b13587d2467f3e4876cf6e8f0461c"
+  otel_collector: "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector:0.158.0@sha256:0969430778574e768e0a262fb940c2955b0b13587d2467f3e4876cf6e8f0461c"
   # read 2026-08-19 via `docker buildx imagetools inspect curlimages/curl:8.21.0`
   # (talks to the registry, no docker daemon needed); digest is the
   # linux/arm64/v8 manifest digest from that inspect output. Used by the
   # fetch-weights init container in models/ornith-9b/overlays/local, pinned by
   # digest rather than :latest per the repository-wide digest-pinning rule.
-  curl: "curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84"
+  curl: "curlimages/curl:8.21.0@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84"
   # read 2026-08-19 via `docker buildx imagetools inspect ealen/echo-server:0.9.2`
   # (registry-only, no docker daemon needed); digest is the linux/arm64
   # manifest digest from that inspect output. Used only by the throwaway
@@ -188,4 +221,4 @@ images:
   # satisfy the same three policies every other workload in that namespace
   # does, or admission rejects it and the test fails 120 seconds later at a
   # curl loop with no stated cause.
-  echo_server: "ealen/echo-server@sha256:74afa5ffd1f0cd81bea9a3ef2f27341dc7e93ed221f2817a2119c230c25cc8a2"
+  echo_server: "ealen/echo-server:0.9.2@sha256:74afa5ffd1f0cd81bea9a3ef2f27341dc7e93ed221f2817a2119c230c25cc8a2"

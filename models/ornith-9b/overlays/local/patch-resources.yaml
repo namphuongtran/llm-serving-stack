@@ -47,7 +47,7 @@ spec:
         # `docker buildx imagetools inspect curlimages/curl:8.21.0`, this is the
         # linux/arm64/v8 manifest digest from that inspect output; recorded
         # with its date under images.curl in versions.yaml.
-        image: curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
+        image: curlimages/curl:8.21.0@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
         command: ["/bin/sh", "-c"]
         args:
           - |

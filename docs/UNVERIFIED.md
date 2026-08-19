@@ -240,6 +240,17 @@ Nothing that requires a cluster. What holds without one:
 - Every shell script parses under bash 3.2.57 (`/bin/bash -n`, the version
   macOS ships, which `shellcheck` alone does not stand in for).
 - `actionlint` reports the CI workflow clean.
+- **Every pinned image digest resolves to a `linux/arm64` image, and every tag
+  written beside it belongs to that digest.** Checked 2026-08-19 against
+  ghcr.io, quay.io, and Docker Hub over HTTPS, with no Docker daemon: for each
+  entry the tag's index was fetched and the pinned digest confirmed as one of
+  its children, then the digest's own config blob was read for its `os` and
+  `architecture`. All five report `linux/arm64`.
+
+  This is the substance of `tests/contract/03-images.bats`'s first test, which
+  itself still cannot run here because `require_arm64` calls `docker buildx
+  imagetools inspect`. The registry answered the same question by a different
+  route. It is not the same as having run that test.
 
 **A passing dry-run does not prove the rendered values are the intended ones.**
 It proves the chart rendered. This is not a hypothetical distinction; it is how
