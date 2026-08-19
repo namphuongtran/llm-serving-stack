@@ -22,9 +22,10 @@ helm upgrade --install pushgateway prometheus-community/prometheus-pushgateway \
   -f platform/30-observability/pushgateway-values.yaml --wait
 
 # Tempo before the collector's exporter points at it, so the endpoint exists
-# by the time traces start flowing. Plain manifests, not a chart: both Grafana
-# Tempo charts are deprecated and one of them cannot render with receivers
-# narrowed to OTLP. See tempo.yaml's header.
+# by the time traces start flowing. Plain manifests, not a chart: the
+# maintained Tempo chart (grafana-community/tempo 2.2.4) still cannot render
+# with receivers narrowed to OTLP, and still mounts nothing at /var/tempo. See
+# tempo.yaml's header for the table and the commands that produced it.
 kubectl apply -f platform/30-observability/tempo.yaml
 kubectl -n observability rollout status deploy/tempo --timeout=5m
 

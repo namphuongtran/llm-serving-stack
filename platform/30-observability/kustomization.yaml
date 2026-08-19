@@ -21,8 +21,10 @@ resources:
   - ttft-prober-cronjob.yaml
   - podmonitor.yaml
   # Added 2026-08-19. Tempo is plain manifests rather than a fifth Helm source
-  # on the Argo CD Application, because both upstream Tempo charts are
-  # deprecated - tempo.yaml's own header carries the evidence. A happy
+  # on the Argo CD Application. Not because the upstream chart is unmaintained
+  # (the maintained one lives in the grafana-community repository), but because
+  # it cannot narrow its receivers to OTLP and mounts nothing at /var/tempo -
+  # tempo.yaml's own header carries the table and the commands. A happy
   # side-effect: listing it here is the whole of the GitOps wiring, since the
   # Application already sources this directory as a path.
   - tempo.yaml

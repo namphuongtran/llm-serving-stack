@@ -1,37 +1,58 @@
 # Trace backend. Hand-written, not a Helm chart, and that is a decision rather
 # than a shortcut.
 #
-# Both Grafana Tempo charts are marked `deprecated: true` in their own
-# Chart.yaml, read 2026-08-19 with `helm show chart`:
-#   grafana/tempo 1.24.4             deprecated, "Grafana Tempo Single Binary Mode"
-#   grafana/tempo-distributed 1.61.3 deprecated, "Grafana Tempo in MicroService mode"
+# CORRECTED 2026-08-19, later the same day. The first version of this comment
+# said the reason was that both Tempo charts are deprecated. That was true of
+# the charts under the `grafana` Helm repo and incomplete as an account, because
+# the maintained successors had already moved:
 #
-# Neither was usable here even setting the deprecation aside:
+#   repo                                              chart              deprecated
+#   https://grafana.github.io/helm-charts             tempo 1.24.4             yes
+#   https://grafana.github.io/helm-charts             tempo-distributed 1.61.3 yes
+#   https://grafana-community.github.io/helm-charts   tempo 2.2.4              NO
+#   https://grafana-community.github.io/helm-charts   tempo-distributed 3.2.2  NO
 #
-#   - grafana/tempo hardcodes every receiver port into its Service, and
-#     templates/_ports.tpl dereferences
-#     `.Values.tempo.receivers.jaeger.protocols.thrift_compact` with no guard.
-#     Narrowing receivers to OTLP alone fails to render at all ("nil pointer
-#     evaluating interface {}.protocols"), so the chart insists on listening on
-#     Jaeger thrift over UDP and TCP, opencensus, and zipkin, none of which
-#     anything in this repository speaks.
-#   - grafana/tempo-distributed renders six workloads at its defaults,
-#     including three ingester replicas, next to a 5.6 GB model on one kind
-#     node.
+# (read from each repository's index.yaml and `helm show chart` on 2026-08-19.
+# The community repo also publishes `grafana` and `loki`, which matters for the
+# log backend this repository has deferred.)
+#
+# So deprecation is NOT the reason. The reason is two properties that the
+# maintained community chart still has, both confirmed against `tempo` 2.2.4
+# (appVersion 2.10.8) on 2026-08-19:
+#
+#   - templates/_ports.tpl still dereferences
+#     `.Values.tempo.receivers.jaeger.protocols.thrift_compact` with no guard,
+#     so narrowing receivers to OTLP alone still fails outright with "nil
+#     pointer evaluating interface {}.protocols". Its Service still publishes
+#     ten ports, including Jaeger thrift over UDP and TCP, opencensus, and
+#     zipkin, none of which anything here speaks.
+#   - With persistence disabled it still mounts nothing at /var/tempo. The only
+#     volume in the rendered StatefulSet is the config, so 24 hours of blocks
+#     and WAL would land on the container's writable layer with no ceiling.
+#
+# The alternative, tempo-distributed 3.2.2, is maintained and current but
+# renders six workloads at its defaults, three of them ingester replicas, next
+# to a 5.6 GB model on one kind node.
 #
 # So this file does what platform/15-keycloak/keycloak.yaml does: one image,
 # pinned by digest, with the config written out and read. Nothing about a
 # single Tempo process needs a chart.
 #
 # > **Untried (2026-08-19):** every claim below about Tempo's runtime
-# > behaviour. No cluster has run this. The config keys were taken from the
-# > rendered output of grafana/tempo 1.24.4, whose appVersion is 2.9.0, the
-# > same version this image is - `helm template` of that chart produced a
-# > tempo.yaml carrying `usage_report.reporting_enabled`,
-# > `compactor.compaction.block_retention`, `storage.trace.backend: local`,
-# > and the `/var/tempo/traces` and `/var/tempo/wal` paths used here. So the
-# > keys are not invented, but no Tempo process has parsed this particular
-# > file. Confirm with `kubectl -n observability logs deploy/tempo` and
+# > behaviour. No cluster has run this.
+# >
+# > The config keys are not invented. Every one was read out of the config that
+# > grafana-community/tempo 2.2.4 renders, whose appVersion is 2.10.8 - the same
+# > version this image is - which carries `server.http_listen_port`,
+# > `distributor.receivers.otlp.protocols.grpc.endpoint`,
+# > `compactor.compaction.block_retention`, `usage_report.reporting_enabled`,
+# > and `storage.trace.backend: local` with the `/var/tempo/traces` and
+# > `/var/tempo/wal` paths used here. The one key that render does not exercise
+# > is `ingester.max_block_duration`, because the chart emits `ingester: {}`;
+# > that key is documented in the same chart's values.yaml at line 91.
+# >
+# > Keys existing is not the same as this file parsing. Confirm with
+# > `kubectl -n observability logs deploy/tempo` and
 # > `bats tests/smoke/05-observability.bats`.
 apiVersion: v1
 kind: ConfigMap
@@ -104,7 +125,7 @@ spec:
           # 2026-08-19. The tag names the multi-arch index; the digest names
           # its linux/arm64 child, confirmed by reading the child's config blob
           # (os linux, architecture arm64).
-          image: grafana/tempo:2.9.0@sha256:0ea6e47231c1c993abed41bddf67d524ff5508954463759f0bcc1e97543f3386
+          image: grafana/tempo:2.10.8@sha256:0a86a9663d64ba036b8a9dfee6a8a4747ad9faf4b176a1402826927bb841933f
           # Entrypoint is /tempo with no default cmd, read from the image
           # config the same day, so the config file has to be named here.
           args: ["-config.file=/conf/tempo.yaml"]

@@ -55,11 +55,15 @@ gets a Tempo datasource from `values-prometheus.yaml`.
 
 Two things to know before looking for a trace.
 
-**It is hand-written, not a Helm chart.** Both upstream Tempo charts are marked
-`deprecated: true` in their own `Chart.yaml`, and `grafana/tempo` additionally
-cannot render with its receivers narrowed to OTLP - its Service template
-dereferences the Jaeger receiver with no guard. `tempo.yaml`'s header carries
-the evidence and the commands that produced it.
+**It is hand-written, not a Helm chart.** Not because of deprecation - the
+charts moved to `https://grafana-community.github.io/helm-charts` and the
+successors there are maintained. The reason is that the maintained `tempo`
+chart 2.2.4 still cannot render with its receivers narrowed to OTLP, and still
+mounts nothing at `/var/tempo` when persistence is off. `tempo.yaml`'s header
+carries the full table and the commands that produced it.
+
+That community repository also publishes `grafana` and `loki`, so it is where
+the deferred log backend would come from.
 
 **The producer is the gateway, not the engine.** llama.cpp emits no spans at
 all (ADR 0005), so the span comes from the Envoy in front of it:

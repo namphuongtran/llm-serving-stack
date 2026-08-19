@@ -223,13 +223,17 @@ images:
   # curl loop with no stated cause.
   echo_server: "ealen/echo-server:0.9.2@sha256:74afa5ffd1f0cd81bea9a3ef2f27341dc7e93ed221f2817a2119c230c25cc8a2"
   # read 2026-08-19 over HTTPS against Docker Hub, no daemon: fetched the
-  # index for tag 2.9.0, took the linux/arm64 child, then read that child's
+  # index for tag 2.10.8, took the linux/arm64 child, then read that child's
   # config blob and confirmed `os: linux`, `architecture: arm64`. The same
   # blob gave the two facts platform/30-observability/tempo.yaml depends on -
   # entrypoint ["/tempo"] with no default cmd, and user "10001:10001".
   #
-  # 2.9.0 is the appVersion of both Grafana Tempo Helm charts, and neither
-  # chart is used: both are marked `deprecated: true` in their own Chart.yaml
-  # (checked the same day), and grafana/tempo cannot render with receivers
-  # narrowed to OTLP. tempo.yaml's header records the full reasoning.
-  tempo: "grafana/tempo:2.9.0@sha256:0ea6e47231c1c993abed41bddf67d524ff5508954463759f0bcc1e97543f3386"
+  # Was 2.9.0 earlier the same day. That version was chosen only because it was
+  # the appVersion of the charts under the `grafana` Helm repo, and that reason
+  # did not survive: those charts are deprecated AND superseded. The maintained
+  # successors live in a different repository,
+  # https://grafana-community.github.io/helm-charts, whose `tempo` chart 2.2.4
+  # is not deprecated and tracks appVersion 2.10.8. So 2.10.8 is what the
+  # maintained chart runs, which makes it the version to pin even though no
+  # chart is used here. tempo.yaml's header records why we still hand-write.
+  tempo: "grafana/tempo:2.10.8@sha256:0a86a9663d64ba036b8a9dfee6a8a4747ad9faf4b176a1402826927bb841933f"
