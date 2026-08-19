@@ -1,0 +1,22 @@
+# Wave 1. Dev mode: state is in memory, so the realm comes from git.
+# Sources platform/15-keycloak, which now carries a kustomization.yaml
+# (Task 12): Argo CD detects the kustomization file and builds it, generating
+# the realm ConfigMap from realm-export.json instead of running install.sh's
+# imperative `kubectl create configmap` line.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: llm }
+  source:
+    repoURL: https://github.com/namphuongtran/llm-serving-stack
+    targetRevision: HEAD
+    path: platform/15-keycloak
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

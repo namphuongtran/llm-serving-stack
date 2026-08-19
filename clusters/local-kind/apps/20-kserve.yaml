@@ -1,0 +1,54 @@
+# Wave 2. Exactly two charts, in order: kserve-crd, then kserve-resources
+# (versions.yaml kserve.charts is the ordered install list; the other eight
+# published charts live under kserve.charts_available and are not installed
+# in phase 1). Multi-source `sources:` rather than two separate Applications:
+# both charts land in the same wave, and Argo CD's own resource ordering
+# within one sync applies by kind before by declaration order, with
+# CustomResourceDefinition (kserve-crd's only output) ordered ahead of
+# Deployment/Service (kserve-resources' output) - confirmed against Argo CD's
+# documented sync behaviour, 2026-08-19. No cluster exists here to watch it
+# happen; if this ordering assumption is wrong, splitting into two
+# Applications at waves 2 and 3 is the fallback (Argo CD's own crd-before-cr
+# guidance recommends exactly that as the more explicit alternative).
+#
+# repoURL/chart split per Argo CD's public-OCI-chart convention: no oci://
+# prefix on repoURL, the chart name is a separate field, confirmed against
+# Argo CD's own Helm documentation, 2026-08-19.
+#
+# kserve-resources' values are the same keys as
+# platform/20-kserve/values-kserve.yaml, copied here rather than referenced:
+# an Argo CD Application is a single git object and cannot read a values file
+# from a second source without a `$values` ref this repository does not use
+# elsewhere. Bumping values-kserve.yaml means updating valuesObject below
+# too - the same known limitation recorded on 00-gateway-api-crds.yaml for
+# version pins, extended to values content.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kserve
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: kserve }
+  sources:
+    - repoURL: ghcr.io/kserve/charts
+      chart: kserve-crd
+      targetRevision: v0.20.0
+    - repoURL: ghcr.io/kserve/charts
+      chart: kserve-resources
+      targetRevision: v0.20.0
+      helm:
+        valuesObject:
+          kserve:
+            controller:
+              deploymentMode: RawDeployment
+              gateway:
+                ingressGateway:
+                  enableGatewayApi: true
+                  className: istio
+                  gateway: istio-system/llm
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

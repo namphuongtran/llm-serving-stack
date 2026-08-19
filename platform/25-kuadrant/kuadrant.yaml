@@ -1,0 +1,16 @@
+# Extracted from the heredoc platform/25-kuadrant/install.sh applies
+# imperatively (`kubectl apply -f - <<'YAML' ... YAML`), so the GitOps
+# Application in clusters/local-kind/apps/25-kuadrant.yaml has a real file to
+# source instead of a shell script's heredoc. install.sh keeps its own copy;
+# the two are identical.
+#
+# apiVersion confirmed against the installed CRD, not carried over from
+# memory: `helm template` of kuadrant/kuadrant-operator --version 1.5.2 (the
+# version platform/25-kuadrant/install.sh pins) on 2026-08-19 renders the
+# kuadrants.kuadrant.io CRD with exactly one served+storage version, v1beta1.
+# `spec: {}` is valid: the same CRD's schema has no required fields under
+# spec.
+apiVersion: kuadrant.io/v1beta1
+kind: Kuadrant
+metadata: { name: kuadrant, namespace: kuadrant-system }
+spec: {}

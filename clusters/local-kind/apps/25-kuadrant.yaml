@@ -1,0 +1,29 @@
+# Wave 2, alongside KServe. Chosen over Envoy AI Gateway, which requires
+# Envoy Gateway as its base (docs/adr/0004-policy-layer-kuadrant.md). Two
+# sources: the operator chart, and this repository's
+# platform/25-kuadrant/kuadrant.yaml (the Kuadrant CR that turns the operator
+# on), extracted from install.sh's heredoc so there is a real file for a
+# GitOps source to point at.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kuadrant
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: kuadrant-system }
+  sources:
+    - repoURL: https://kuadrant.io/helm-charts
+      chart: kuadrant-operator
+      targetRevision: 1.5.2
+    - repoURL: https://github.com/namphuongtran/llm-serving-stack
+      targetRevision: HEAD
+      path: platform/25-kuadrant
+      directory:
+        recurse: false
+        exclude: "install.sh"
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

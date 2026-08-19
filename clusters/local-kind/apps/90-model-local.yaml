@@ -1,0 +1,19 @@
+# Wave 4. Kustomize path source; kustomize build already renders the
+# InferenceService, ServingRuntime, HTTPRoute, ScaledObject, PDB, and
+# fetch-weights init container.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: model-local
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: llm }
+  source:
+    repoURL: https://github.com/namphuongtran/llm-serving-stack
+    targetRevision: HEAD
+    path: models/ornith-9b/overlays/local
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

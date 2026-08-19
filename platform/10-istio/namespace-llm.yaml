@@ -1,0 +1,14 @@
+# The declarative counterpart to install.sh's imperative
+# `kubectl create namespace llm --dry-run=client -o yaml | kubectl apply -f -`
+# followed by `kubectl label namespace llm istio.io/dataplane-mode=ambient
+# --overwrite`. Task 12's GitOps Applications need this namespace to exist
+# with the ambient label before Keycloak, KServe, or the model overlay land
+# in it, and CreateNamespace=true on those Applications alone would create a
+# bare namespace with no label. install.sh keeps its own imperative version
+# of this; the two describe the same object.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm
+  labels:
+    istio.io/dataplane-mode: ambient

@@ -1,0 +1,19 @@
+# Extracted from the heredoc platform/30-observability/install.sh used to
+# apply this same object imperatively. Task 12 (GitOps) needs a real file: an
+# Argo CD Application can source a git path, not a shell script's heredoc.
+# install.sh keeps its own copy of this heredoc; the two are identical, and
+# install.sh remains the manual/legacy path now that `task local:up` drives
+# everything through Argo CD instead (see clusters/local-kind/apps/).
+#
+# Scrapes the predictor directly: KServe pods expose the engine port, not a
+# separate metrics port.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: llm-predictors
+  namespace: observability
+spec:
+  namespaceSelector: { matchNames: [llm] }
+  selector:
+    matchExpressions: [{ key: serving.kserve.io/inferenceservice, operator: Exists }]
+  podMetricsEndpoints: [{ port: http, path: /metrics, interval: 15s }]

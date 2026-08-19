@@ -1,10 +1,24 @@
 # One Gateway for everything: the inference API and Keycloak share a hostname,
 # so the JWT issuer matches the URL used to fetch JWKS (risk R3 in the spec).
+#
+# The annotation below is the declarative half of install.sh's imperative
+# `kubectl patch svc llm-istio --type=merge -p '{"spec":{"type":"NodePort"...
+# }}'`: Istio's Gateway API controller honours
+# `networking.istio.io/service-type` on the Gateway object itself and creates
+# the generated Service with that type from the start (confirmed against
+# Istio's own gateway-api documentation and community examples, 2026-08-19; no
+# cluster exists here to watch it happen). It does not, as of the same
+# reading, expose any annotation for pinning the exact nodePort number
+# (open and unresolved: istio/istio#45113), which is why kind's fixed
+# host-port mapping (30080/30443, prereqs/kind-cluster.yaml) still needs
+# gateway-service-nodeport.yaml alongside this file.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: llm
   namespace: istio-system
+  annotations:
+    networking.istio.io/service-type: NodePort
 spec:
   gatewayClassName: istio
   listeners:

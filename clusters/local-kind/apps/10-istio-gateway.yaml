@@ -1,0 +1,26 @@
+# Wave 1, alongside the four Istio charts above: the shared Gateway, the
+# ambient-labelled llm namespace, and the nodePort pin, none of which are
+# chart output. Sources this repository's platform/10-istio/ directory
+# directly (gateway.yaml, namespace-llm.yaml, gateway-service-nodeport.yaml);
+# install.sh and gateway-api-crds.sh in the same directory are shell scripts,
+# not manifests, and Argo CD's directory source only picks up
+# *.yaml/*.yml/*.json.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-gateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: istio-system }
+  source:
+    repoURL: https://github.com/namphuongtran/llm-serving-stack
+    targetRevision: HEAD
+    path: platform/10-istio
+    directory:
+      recurse: false
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

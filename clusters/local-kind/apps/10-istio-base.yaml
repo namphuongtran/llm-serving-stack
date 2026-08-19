@@ -1,0 +1,22 @@
+# Wave 1. Istio in ambient mode: ztunnel per node, no sidecars. Chosen over
+# Envoy Gateway in docs/adr/0003-gateway-istio-ambient.md. Split into four
+# Applications (base, istiod, cni, ztunnel) because that is how
+# platform/10-istio/install.sh installs them: four separate `helm upgrade
+# --install` releases, in this order.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-base
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: istio-system }
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: base
+    targetRevision: 1.30.3
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

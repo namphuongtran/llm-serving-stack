@@ -1,0 +1,21 @@
+# Wave 1. profile=ambient, same as platform/10-istio/install.sh.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-cni
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: istio-system }
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: cni
+    targetRevision: 1.30.3
+    helm:
+      parameters:
+        - { name: profile, value: ambient }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

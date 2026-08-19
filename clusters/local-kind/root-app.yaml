@@ -1,0 +1,22 @@
+# The single object `task local:up` applies by hand (platform/50-argocd's own
+# install is the only other imperative step). Every other Application in
+# clusters/local-kind/apps/ is this Application's child: Argo CD reads the
+# directory, creates each Application it finds, and each of those in turn
+# syncs its own sources by its own sync-wave. One apply brings in everything.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: argocd }
+  source:
+    repoURL: https://github.com/namphuongtran/llm-serving-stack
+    targetRevision: HEAD
+    path: clusters/local-kind/apps
+    directory:
+      recurse: false
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

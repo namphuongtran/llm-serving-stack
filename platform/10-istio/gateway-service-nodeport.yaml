@@ -1,0 +1,93 @@
+# Pins the exact nodePort numbers kind's extraPortMappings expect
+# (prereqs/kind-cluster.yaml: containerPort 30080 -> hostPort 80, 30443 ->
+# 443). gateway.yaml's networking.istio.io/service-type annotation gets the
+# generated Service to type NodePort; nothing in Istio's Gateway API surface
+# pins the specific port number (istio/istio#45113, open, unresolved as of
+# 2026-08-19), and the apiserver would otherwise assign a random one.
+#
+# This is a PostSync Argo CD hook, not a human running install.sh's
+# `kubectl patch svc llm-istio`: Argo CD runs it after every sync, which is
+# what keeps this declarative in the sense Task 12's audit cares about. It
+# waits for the Service to exist first, because Argo CD's own notion of
+# "Gateway synced" only means the manifest was applied, not that Istio's
+# controller has finished provisioning the child Service yet.
+#
+# Reuses the already-pinned curl image (versions.yaml images.curl) rather
+# than adding a new kubectl-image pin: a plain PATCH against the apiserver's
+# REST API, authenticated with the Job's own mounted ServiceAccount token,
+# needs nothing more than curl and the in-cluster CA bundle both auto-mounted
+# into every pod.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gateway-service-nodeport
+  namespace: istio-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gateway-service-nodeport
+  namespace: istio-system
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gateway-service-nodeport
+  namespace: istio-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gateway-service-nodeport
+subjects:
+  - kind: ServiceAccount
+    name: gateway-service-nodeport
+    namespace: istio-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gateway-service-nodeport
+  namespace: istio-system
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: gateway-service-nodeport
+      restartPolicy: Never
+      containers:
+        - name: patch
+          image: curlimages/curl@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              API="https://kubernetes.default.svc"
+              SVC="$API/api/v1/namespaces/istio-system/services/llm-istio"
+
+              i=0
+              while ! curl -sf --cacert "$CACERT" -H "Authorization: Bearer $TOKEN" "$SVC" >/dev/null; do
+                i=$((i + 1))
+                if [ "$i" -ge 30 ]; then
+                  echo "gateway-service-nodeport: svc/llm-istio never appeared" >&2
+                  exit 1
+                fi
+                sleep 5
+              done
+
+              curl -sf --cacert "$CACERT" -H "Authorization: Bearer $TOKEN" \
+                -H 'Content-Type: application/strategic-merge-patch+json' \
+                -X PATCH \
+                -d '{"spec":{"type":"NodePort","ports":[{"name":"http","port":80,"targetPort":80,"nodePort":30080}]}}' \
+                "$SVC"
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 32Mi }

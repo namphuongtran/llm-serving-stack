@@ -1,0 +1,28 @@
+# Wave 0. Required by KServe for webhook certificates, in every deployment
+# mode (platform/00-cert-manager/install.sh carries the same reasoning and
+# the same version pin).
+#
+# targetRevision and crds.enabled are copied from versions.yaml
+# (charts.cert_manager: v1.21.1, read 2026-08-19) and install.sh at authoring
+# time; see 00-gateway-api-crds.yaml's comment on why an Argo Application
+# cannot read versions.yaml itself.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: cert-manager }
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: v1.21.1
+    helm:
+      parameters:
+        - { name: crds.enabled, value: "true" }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

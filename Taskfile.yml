@@ -1,8 +1,19 @@
 # Single entry point for local operations.
 #
-# Scaffolding stage: task names and their order are settled, the bodies are not
-# implemented yet. Each stub prints what it will do so the intended flow is
-# reviewable before any of it is built.
+# Remaining stubs (token, chat, local:status, drill:drain) print what they
+# will do; every other task now runs the real command. `test:smoke`,
+# `test:contract`, and `lint` were wired to their real commands in Task 12,
+# because tests/smoke, tests/contract, and every overlay this repository has
+# at that point already exist and need no cluster to build or parse.
+#
+# go-task 3.53.1 (confirmed on this machine, 2026-08-19) fails to parse any
+# `cmds` list entry whose string contains a colon followed by a space, even
+# inside quotes (`echo "hello: world"` and `echo 'hello: world'` both error
+# "invalid keys in command" - this is go-task's own command-shorthand
+# detection, not a YAML parsing rule; plain YAML allows a quoted colon
+# anywhere). Every stub message below uses " - " instead of ": " for exactly
+# this reason; using a colon here breaks `task --list` for the whole file, not
+# just the one task.
 
 version: "3"
 
@@ -27,7 +38,10 @@ tasks:
   local:up:
     desc: Empty machine to a ready service (phase 1)
     cmds:
-      - echo "TODO: kind cluster, then platform waves 0-4, then wait for ready"
+      - task: local:cluster
+      - ./platform/50-argocd/install.sh
+      - kubectl apply -f clusters/local-kind/root-app.yaml
+      - kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy applications.argoproj.io --all --timeout=30m
 
   local:cluster:
     desc: Create the kind cluster
@@ -45,41 +59,42 @@ tasks:
   local:status:
     desc: Show what is running and what is not ready
     cmds:
-      - echo "TODO: summarise pods, gateway, InferenceService conditions"
+      - echo "TODO - summarise pods, gateway, InferenceService conditions"
 
   # --- using the service ---------------------------------------------------
 
   token:
     desc: Obtain a JWT from Keycloak
     cmds:
-      - echo "TODO: client credentials grant against https://{{.HOSTNAME}}/realms/llm"
+      - echo "TODO - client credentials grant against http://{{.HOSTNAME}}/realms/llm"
 
   chat:
     desc: Send one streaming chat completion
     cmds:
-      - echo "TODO: POST /v1/chat/completions with the JWT, stream the response"
+      - echo "TODO - POST /v1/chat/completions with the JWT, stream the response"
 
   # --- verification --------------------------------------------------------
 
   test:smoke:
     desc: End-to-end checks, including 401 and 429 paths
     cmds:
-      - echo "TODO: run tests/smoke"
+      - bats tests/smoke
 
   test:contract:
     desc: Assert the engine contract, so engines stay swappable
     cmds:
-      - echo "TODO: run tests/contract"
+      - bats tests/contract
 
   lint:
-    desc: Build every overlay and validate against CRD schemas
+    desc: Build every overlay and check for empty version pins
     cmds:
-      - echo "TODO: kustomize build + kubeconform for every overlay"
+      - for o in models/*/overlays/*; do kustomize build "$o" >/dev/null || exit 1; done
+      - '[ "$(yq -r ".. | select(type == \"!!str\") | select(. == \"\")" versions.yaml | wc -l)" -eq 0 ]'
 
   policy:
     desc: Run admission policies locally, the same ones the cluster enforces
     cmds:
-      - echo "TODO: evaluate policy/ against rendered manifests"
+      - echo "TODO - evaluate policy/ against rendered manifests (wired in Task 13)"
 
   # --- measurement ---------------------------------------------------------
 
@@ -91,9 +106,9 @@ tasks:
   drill:recovery:
     desc: Delete the namespace, let Argo CD rebuild, measure time to first token
     cmds:
-      - echo "TODO: destructive drill; records the real recovery time objective"
+      - echo "TODO - destructive drill; records the real recovery time objective"
 
   drill:drain:
     desc: Drain a node and assert the service stays available
     cmds:
-      - echo "TODO: cordon and drain, watch the PodDisruptionBudget hold"
+      - echo "TODO - see docs/runbooks/node-drain.md for the commands"

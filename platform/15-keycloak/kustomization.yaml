@@ -1,0 +1,19 @@
+# The GitOps counterpart to install.sh's first line (`kubectl create
+# configmap keycloak-realm --from-file=... --dry-run=client -o yaml |
+# kubectl apply -f -`). This is one of the two "common cases" Task 12's own
+# text names: a ConfigMap built by a shell script, made declarative by
+# generating it through Kustomize instead. keycloak.yaml's Deployment still
+# mounts it by the name `keycloak-realm`; Kustomize's built-in name-reference
+# transformer rewrites that mount to whatever suffixed name the generator
+# produces, within this same kustomization, which is why
+# disableNameSuffixHash is not needed here the way it is for the Grafana
+# dashboard ConfigMap (nothing outside this kustomization looks up
+# keycloak-realm by name).
+namespace: llm
+resources:
+  - keycloak.yaml
+  - httproute.yaml
+configMapGenerator:
+  - name: keycloak-realm
+    files:
+      - realm-export.json

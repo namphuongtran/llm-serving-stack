@@ -1,0 +1,104 @@
+# Wave 3. Metrics via Prometheus scrape, traces via OTLP (no producer in
+# phase 1: llama.cpp emits no traces, ADR 0005 and ADR 0006). Four sources:
+# the three Helm charts install.sh installs, plus this repository's
+# platform/30-observability/, which now carries a kustomization.yaml
+# (Task 12) bundling the recording rules, the TTFT prober CronJob, the
+# PodMonitor, and a configMapGenerator for the Grafana dashboard (the second
+# of the two "ConfigMap built by a shell script" cases Task 12's own text
+# names).
+#
+# Each chart's valuesObject is copied from its sibling values file in
+# platform/30-observability/ (values-prometheus.yaml, otel-collector.yaml,
+# pushgateway-values.yaml) at authoring time, for the same reason
+# 20-kserve.yaml's is: an Argo CD Application cannot read a second source's
+# file into `values:` without a `$values` ref this repository does not use.
+# Bumping any of those three files means updating this Application too.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: observability }
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 88.5.0
+      helm:
+        valuesObject:
+          prometheus:
+            prometheusSpec:
+              retention: 12h
+              scrapeInterval: 15s
+              resources:
+                requests: { cpu: 100m, memory: 512Mi }
+                limits: { cpu: "1", memory: 1500Mi }
+              podMonitorSelectorNilUsesHelmValues: false
+              ruleSelectorNilUsesHelmValues: false
+          grafana:
+            adminPassword: admin
+            sidecar:
+              dashboards: { enabled: true, label: grafana_dashboard }
+          alertmanager:
+            enabled: false
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-collector
+      targetRevision: 0.170.0
+      helm:
+        valuesObject:
+          mode: deployment
+          fullnameOverride: otel-collector
+          image:
+            repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector
+            tag: "0.158.0"
+            digest: "sha256:0969430778574e768e0a262fb940c2955b0b13587d2467f3e4876cf6e8f0461c"
+          command:
+            name: otelcol
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          config:
+            receivers:
+              otlp:
+                protocols:
+                  grpc: { endpoint: "0.0.0.0:4317" }
+                  http: { endpoint: "0.0.0.0:4318" }
+            processors:
+              batch: {}
+              attributes/genai:
+                actions:
+                  - { key: gen_ai.system, value: llamacpp, action: upsert }
+                  - { key: gen_ai.request.model, value: ornith-9b, action: upsert }
+            exporters:
+              debug: { verbosity: basic }
+            service:
+              pipelines:
+                traces:
+                  receivers: [otlp]
+                  processors: [attributes/genai, batch]
+                  exporters: [debug]
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: prometheus-pushgateway
+      targetRevision: 3.8.0
+      helm:
+        valuesObject:
+          fullnameOverride: pushgateway
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          persistentVolume:
+            enabled: false
+          serviceMonitor:
+            enabled: true
+            namespace: observability
+            additionalLabels: { release: kube-prometheus-stack }
+            honorLabels: true
+    - repoURL: https://github.com/namphuongtran/llm-serving-stack
+      targetRevision: HEAD
+      path: platform/30-observability
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

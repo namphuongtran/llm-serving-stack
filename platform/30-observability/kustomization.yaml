@@ -1,0 +1,28 @@
+# The declarative half of this layer's install.sh: the parts that were plain
+# `kubectl apply -f` calls (recording-rules.yaml, ttft-prober-cronjob.yaml,
+# podmonitor.yaml) plus a ConfigMap install.sh built with `kubectl create
+# configmap ... --dry-run=client | kubectl label -f - ... | kubectl apply -f
+# -`. That last one is exactly the shape Task 12's audit calls out by name
+# ("the Keycloak realm ConfigMap built by a shell script" - the same shape
+# recurs here for the Grafana dashboard), so it becomes a configMapGenerator
+# instead: Kustomize builds the ConfigMap from the same JSON file and applies
+# the same grafana_dashboard=1 label declaratively.
+#
+# The three Helm charts this layer also installs (kube-prometheus-stack,
+# otel-collector, pushgateway) are not here: they are separate sources on the
+# Argo CD Application in clusters/local-kind/apps/30-observability.yaml, the
+# same way install.sh's `helm upgrade --install` calls are not files this
+# kustomization could reference.
+namespace: observability
+resources:
+  - recording-rules.yaml
+  - ttft-prober-cronjob.yaml
+  - podmonitor.yaml
+configMapGenerator:
+  - name: llm-serving-dashboard
+    files:
+      - dashboards/llm-serving.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"

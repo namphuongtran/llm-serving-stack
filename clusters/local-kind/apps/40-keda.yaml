@@ -1,0 +1,25 @@
+# Wave 3. Scales on queue depth, not CPU: a busy GPU can look idle to CPU
+# based autoscaling. valuesObject copied from platform/40-keda/values.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keda
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: keda }
+  source:
+    repoURL: https://kedacore.github.io/charts
+    chart: keda
+    targetRevision: 2.20.2
+    helm:
+      valuesObject:
+        resources:
+          operator:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

@@ -1,0 +1,30 @@
+# Wave 0, ahead of every implementation. Same reasoning as
+# platform/10-istio/gateway-api-crds.sh: implementations ship their own
+# copies of these CRDs and conflict when they win the race.
+#
+# Server-side apply matters here, not client-side: these CRDs exceed the
+# annotation size limit client-side apply uses to record the previous applied
+# configuration.
+#
+# targetRevision is copied from versions.yaml's crds.gateway_api (v1.5.1,
+# read 2026-08-19) at authoring time. Argo CD Applications are static git
+# objects; they cannot read versions.yaml at sync time, so bumping the pin
+# there means updating this file too. Known limitation, not a manual cluster
+# step: it is a repository-consistency concern, not something a human clicks.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway-api-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  destination: { server: https://kubernetes.default.svc, namespace: default }
+  source:
+    repoURL: https://github.com/kubernetes-sigs/gateway-api
+    targetRevision: v1.5.1
+    path: config/crd/standard
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true]
