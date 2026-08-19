@@ -8,6 +8,5 @@ resources:
   - scaledobject.yaml
   - pdb.yaml
   - fallback.yaml
-  - retry-policy.yaml
 patches:
   - path: patch-resources.yaml

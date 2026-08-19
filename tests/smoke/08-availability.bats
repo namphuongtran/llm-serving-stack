@@ -11,10 +11,15 @@ setup() {
 }
 
 @test "a PodDisruptionBudget protects one replica" {
+  # With minReplicas: 2 on the InferenceService and minAvailable: 1 on the
+  # PDB, two healthy replicas means both are currently healthy and exactly
+  # one of them may be disrupted at a time. Anything else - a missing
+  # replica, a PDB with the wrong minAvailable - should fail this test for
+  # a stated reason, not pass because ">= 0" is true of every valid integer.
   run k -n llm get pdb ornith-9b -o jsonpath='{.status.currentHealthy}'
-  [ "$output" -ge 1 ]
+  [ "$output" -eq 2 ]
   run k -n llm get pdb ornith-9b -o jsonpath='{.status.disruptionsAllowed}'
-  [ "$output" -ge 0 ]
+  [ "$output" -eq 1 ]
 }
 
 @test "a streaming response survives a rolling restart" {
@@ -45,6 +50,7 @@ setup() {
 }
 
 @test "the endpoint still answers when the primary has no replicas" {
+  skip "ADR 0007: cross-backend failover is withdrawn, not just unmeasured - weight:0 backendRefs are never selected by Envoy's retry (issue 5891), so phase 1 has no mechanism for this to prove"
   token=$(get_token llm-tier-pro)
   kubectl --context "$KUBECTL_CONTEXT" -n llm scale deploy/ornith-9b-predictor --replicas=0
   wait_for 120 "primary to have zero endpoints" bash -c \

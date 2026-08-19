@@ -4,20 +4,29 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Sourced at top level, not inside a command substitution: that is what
+# makes KUBECTL_CONTEXT and the k() wrapper available to every kubectl call
+# below, not just to get_token. Every other script and test in this
+# repository queries the cluster through k() or an explicit --context; a
+# bare `kubectl` here would silently target whatever context happens to be
+# current on the machine running this, which is not necessarily
+# kind-llm-serving-stack.
+source tests/lib/helpers.bash
+
 DATE="$(date +%Y-%m-%d)"
 MACHINE="$(uname -m)-$(sysctl -n machdep.cpu.brand_string 2>/dev/null | tr ' ' '-' | tr -d '()' || echo unknown)"
-ENGINE_IMAGE="$(kubectl -n llm get pod -l serving.kserve.io/inferenceservice=ornith-9b \
+ENGINE_IMAGE="$(k -n llm get pod -l serving.kserve.io/inferenceservice=ornith-9b \
   -o jsonpath='{.items[0].spec.containers[?(@.name=="kserve-container")].image}')"
 ENGINE_NAME="$(basename "${ENGINE_IMAGE%%@*}" | cut -d: -f1)"
 OUT="bench/results/${DATE}-${MACHINE}-${ENGINE_NAME}"
 mkdir -p "$OUT"
 
-TOKEN="$(source tests/lib/helpers.bash && get_token llm-tier-pro)"
+TOKEN="$(get_token llm-tier-pro)"
 
 jq -n \
   --arg date "$DATE" --arg machine "$MACHINE" --arg engine_image "$ENGINE_IMAGE" \
   --arg model "$(yq -r '.model.local.hf_file' models/ornith-9b/base/model.yaml)" \
-  --arg replicas "$(kubectl -n llm get deploy ornith-9b-predictor -o jsonpath='{.spec.replicas}')" \
+  --arg replicas "$(k -n llm get deploy ornith-9b-predictor -o jsonpath='{.spec.replicas}')" \
   '{date:$date, machine:$machine, engine_image:$engine_image, model:$model, replicas:$replicas}' \
   > "$OUT/env.json"
 

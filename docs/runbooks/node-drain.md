@@ -3,9 +3,14 @@
 What to check before, during, and after taking a node out of service, and how
 to read the result. Written 2026-08-19 against the manifests in
 `models/ornith-9b/overlays/local/` (patch-resources.yaml, pdb.yaml,
-fallback.yaml, retry-policy.yaml, httproute.yaml). No cluster ran while this
-was written; see the `Unmeasured` markers below for what to check against a
-real one.
+fallback.yaml, httproute.yaml). No cluster ran while this was written; see
+the `Unmeasured` marker below for what to check against a real one.
+
+Cross-backend failover (routing to `fallback-small` when the primary is
+down) is withdrawn, not deferred: see ADR 0007
+(`docs/adr/0007-failover-not-expressible-in-gateway-api.md`). The sections
+below that used to describe proving it now describe why it does not exist
+in phase 1 instead.
 
 ## Before you drain
 
@@ -91,42 +96,48 @@ read 2026-08-19.)
 `ornith-9b`'s `InferenceService` sets `--alias ornith-9b`
 (`models/ornith-9b/base/inferenceservice.yaml`); `fallback-small`'s sets
 `--alias fallback-small` (`models/ornith-9b/overlays/local/fallback.yaml`).
-So the served-by engine is the response's own `model` field:
+This still matters for calling `fallback-small` directly (see below); it no
+longer matters for telling which one answered a request through the gateway,
+because the gateway never routes to `fallback-small` (next section).
+
+## Why there is no failover route to prove
+
+ADR 0007 (`docs/adr/0007-failover-not-expressible-in-gateway-api.md`)
+withdrew the mechanism this runbook used to describe here: a `weight: 0`
+`backendRef` on the `ornith-9b` `HTTPRoute`, reached through Envoy retries.
+It cannot work. Envoy selects among an `HTTPRoute`'s weighted backends once,
+at initial route match; a retry is attempted against a different host
+**inside the already-selected cluster**, never against a different backend
+(Envoy issue 5891, closed without the behaviour changing). A permanently
+zero-weight backend therefore has zero probability of ever being selected,
+on the first attempt or any retry. A second, independent defect existed in
+the same attempt: the retry policy attached via `spec.gateways:
+[istio-system/llm]`, which Istio resolves against its own
+`networking.istio.io` `Gateway` kind, not the Gateway API
+`gateway.networking.k8s.io` `Gateway` this repository actually has under
+that name, so it most likely never attached to anything either.
+
+`models/ornith-9b/overlays/local/retry-policy.yaml` has been deleted, and
+the `HTTPRoute` carries only the primary backend - it has no rule that
+matches on the request's `model` field, so posting `"model":"fallback-small"`
+to `$BASE` still lands on `ornith-9b-predictor`, whatever `llama.cpp` then
+does with an alias it does not recognise. `fallback-small` is still deployed
+(`models/ornith-9b/overlays/local/fallback.yaml`) and independently useful,
+and Task 13's CI overlay reuses its model pin, but reaching it now takes a
+port-forward straight to its own Service, not a request through the gateway:
 
 ```bash
-curl -s "$BASE/v1/chat/completions" -H "authorization: Bearer $TOKEN" \
-  -H 'content-type: application/json' \
-  -d '{"model":"ornith-9b","messages":[{"role":"user","content":"hi"}],"max_tokens":8}' \
+kubectl --context "$KUBECTL_CONTEXT" -n llm port-forward svc/fallback-small-predictor 8081:80 &
+curl -s http://127.0.0.1:8081/v1/chat/completions -H 'content-type: application/json' \
+  -d '{"model":"fallback-small","messages":[{"role":"user","content":"hi"}],"max_tokens":8}' \
   | jq -r .model
-# "ornith-9b"    -> answered by the primary
-# "fallback-small" -> answered by the failover route
+kill %1
 ```
 
-For a streamed response, check the `model` field of any chunk rather than
-the request body, for the same reason.
-
-## Proving the failover route works
-
-```bash
-kubectl --context "$KUBECTL_CONTEXT" -n llm scale deploy/ornith-9b-predictor --replicas=0
-TOKEN=$(source tests/lib/helpers.bash && get_token llm-tier-pro)
-curl -s -o /dev/null -w '%{http_code}\n' http://llm.localtest.me/v1/models -H "authorization: Bearer $TOKEN"
-kubectl --context "$KUBECTL_CONTEXT" -n llm scale deploy/ornith-9b-predictor --replicas=2
-```
-
-> **Unmeasured (2026-08-19):** whether the endpoint keeps answering with the
-> primary at zero replicas, run the commands above (and
-> `tests/smoke/08-availability.bats`, test "the endpoint still answers when
-> the primary has no replicas") once a cluster exists.
-
-This is not a formality. `models/ornith-9b/overlays/local/retry-policy.yaml`
-carries a specific, recorded doubt about its own mechanism: Envoy selects
-among the HTTPRoute's weighted backends (`ornith-9b-predictor:100`,
-`fallback-small-predictor:0`) by fixed probability on the initial attempt
-and on every retry alike, so a permanently zero-weight backend may never be
-chosen regardless of the primary's health. That file documents the doubt in
-full; nothing in this repository has run a cluster to confirm or refute it.
-If the drill above returns `503`, that doubt was correct, and the failover
-line in the design spec is aspirational until the routing is rebuilt on a
-mechanism that changes cluster selection on primary health (an Envoy
-aggregate cluster via `EnvoyFilter`, for example) rather than a retry count.
+Genuine cross-backend failover needs an Envoy-native construct outside
+Gateway API (an aggregate cluster via `EnvoyFilter`); building one is not in
+phase 1's scope. `tests/smoke/08-availability.bats`'s "the endpoint still
+answers when the primary has no replicas" test is marked `skip`ped with ADR
+0007 as its reason, not deleted and not left failing: there is nothing left
+to measure here, because the capability itself was withdrawn rather than
+merely unmeasured.

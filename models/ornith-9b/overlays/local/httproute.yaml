@@ -10,12 +10,16 @@ spec:
     - matches:
         - path: { type: PathPrefix, value: /v1 }
       backendRefs:
+        # The fallback-small InferenceService (fallback.yaml) is deployed but
+        # not routed to from here: ADR 0007 withdraws the weight: 0 +
+        # retries failover mechanism this rule used to carry. Weighted
+        # cluster selection happens once, at initial route match; retries
+        # stay inside the already-selected cluster and never reach a
+        # zero-weight backend (Envoy issue 5891). Core Gateway API has no
+        # failover primitive; a real one needs an Envoy aggregate cluster
+        # via EnvoyFilter, which is out of scope for phase 1.
         - name: ornith-9b-predictor
           port: 80
-          weight: 100
-        - name: fallback-small-predictor
-          port: 80
-          weight: 0        # zero weight: reached only through retry, not load split
       timeouts:
         # Streaming answers run for tens of seconds. The default is far too
         # short and truncates responses mid-sentence.

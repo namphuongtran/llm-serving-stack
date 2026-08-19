@@ -23,11 +23,11 @@ keeps them apart:
 - **Unverified by construction** - phase 1's own acceptance bar, which by
   definition cannot be met until the suite runs once, end to end.
 
-## Doubted: cross-backend failover
+## Withdrawn: cross-backend failover
 
-Not merely unmeasured - there is a specific, sourced technical reason to
-believe the mechanism as built cannot work at all, independent of any
-measurement.
+Not a pending measurement. This capability does not exist in phase 1, on
+purpose, for a reason established without a cluster and confirmed by a
+second, independent defect.
 
 The design spec (section 11) and the implementation plan specified failover
 to a smaller fallback model via a `weight: 0` `backendRef` on the `ornith-9b`
@@ -42,32 +42,28 @@ reference documentation, not by running a cluster:
    closed without the behaviour changing). A `weight: 0` backend therefore
    has zero probability of ever being selected, on the first attempt or any
    retry.
-2. The retry policy (`models/ornith-9b/overlays/local/retry-policy.yaml`)
-   attaches via `spec.gateways: [istio-system/llm]`, which Istio resolves
-   against its own `networking.istio.io` `Gateway` kind, not the Gateway API
-   `gateway.networking.k8s.io` `Gateway` this repository actually has under
-   that name. The policy most likely never attaches to anything.
+2. The retry policy attached via `spec.gateways: [istio-system/llm]`, which
+   Istio resolves against its own `networking.istio.io` `Gateway` kind, not
+   the Gateway API `gateway.networking.k8s.io` `Gateway` this repository
+   actually has under that name. The policy most likely never attached to
+   anything.
 
-ADR 0007's own decision is to remove the non-working mechanism and mark the
-capability deferred; that code change (deleting or replacing
-`retry-policy.yaml`, adjusting the `HTTPRoute`'s weights, marking
-`tests/smoke/08-availability.bats`'s failover test skipped with the ADR as
-its reason) is a separate, later fix round and had not landed as of this
-document. **As things stand in this repository right now, the non-working
-manifest is still present and the test is not yet marked skipped** - this
-section exists so a reader does not have to discover that gap by running the
-test and watching it fail for a reason the ADR already explains.
+ADR 0007's decision has landed in code, not only in the ADR:
+`models/ornith-9b/overlays/local/retry-policy.yaml` is deleted, the
+`ornith-9b` `HTTPRoute` carries only the primary backend (no `weight`, no
+second `backendRef`), and `tests/smoke/08-availability.bats`'s "the endpoint
+still answers when the primary has no replicas" test is `skip`ped with ADR
+0007 named as the reason - not deleted, not left failing. The
+`fallback-small` `InferenceService` is kept (it is independently useful, and
+Task 13's CI overlay reuses its model pin); it is simply no longer wired to
+the gateway as a fallback. `docs/runbooks/node-drain.md` explains how to
+reach it directly (by port-forward) instead of through a route that does not
+exist.
 
-- Settle it: apply ADR 0007's own decision (remove or replace
-  `models/ornith-9b/overlays/local/retry-policy.yaml`, adjust
-  `models/ornith-9b/overlays/local/httproute.yaml`'s weights, mark
-  `tests/smoke/08-availability.bats`'s "the endpoint still answers when the
-  primary has no replicas" test `skip`ped, citing ADR 0007) - or, once a
-  cluster exists, run `kubectl --context "$KUBECTL_CONTEXT" -n llm scale
-  deploy/ornith-9b-predictor --replicas=0` and observe whether
-  `curl http://llm.localtest.me/v1/models` still returns `200`, which is the
-  literal drill in `docs/runbooks/node-drain.md`, "Proving the failover
-  route works".
+There is nothing left to settle here. Genuine cross-backend failover would
+need an Envoy-native construct outside Gateway API (an aggregate cluster via
+`EnvoyFilter`), which is a real future project, not a pending measurement on
+the current one.
 
 ## Known engine-contract gap: llama.cpp emits no traces
 
@@ -107,7 +103,7 @@ the result and the date in `README.md`.
 ## Unproven: every dated measurement still owed
 
 Every dated `> **Unmeasured` marker elsewhere in this repository, reconciled
-by `grep -rn "Unmeasured (" . | grep -v docs/UNVERIFIED.md | wc -l` (15,
+by `grep -rn "Unmeasured (" . | grep -v docs/UNVERIFIED.md | wc -l` (14,
 2026-08-19; this document's own references to that marker text in prose are
 excluded from the count on purpose - otherwise this table would inflate the
 number every time it mentions the pattern it is counting). Each row below
@@ -131,7 +127,6 @@ every row.
 | `docs/08-why-llm-d.md:26` | Throughput/TTFT difference between the shared-prefix and short-prompt scenarios, single replica | `task bench` (scenarios `03-shared-prefix.json`, `01-short.json`) |
 | `docs/adr/0006-metric-normalisation.md:120` | Whether the `llamacpp:*` metric names are actually present, unrenamed, on a live `/metrics` endpoint | `kubectl -n llm exec <predictor pod> -c kserve-container -- wget -qO- http://127.0.0.1:8080/metrics \| grep -E '^# (HELP\|TYPE)' \| sort` |
 | `docs/runbooks/node-drain.md:70` | Memory footprint of two `ornith-9b-predictor` replicas resident together | `kubectl -n llm top pod -l serving.kserve.io/inferenceservice=ornith-9b` |
-| `docs/runbooks/node-drain.md:117` | Whether the endpoint keeps answering with the primary at zero replicas (see "Doubted" above - this is the same drill) | Scale the primary to 0, curl `/v1/models`, scale back; `tests/smoke/08-availability.bats` |
 | `docs/runbooks/recovery-drill.md:19` | The recovery drill's own time-to-first-token number | `task drill:recovery` (runs `bench/recovery-drill.sh`) |
 
 ## What is proven
