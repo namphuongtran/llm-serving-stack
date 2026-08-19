@@ -11,7 +11,13 @@ jobs:
       - name: Install tools
         run: |
           set -euo pipefail
-          curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/latest/download/install_kustomize.sh | bash
+          # Pinned, not releases/latest. versions.yaml tools.kustomize is the
+          # source of truth for this string; a workflow cannot read that file
+          # before it has installed yq, so the version is written in here and
+          # the two must be changed together.
+          KUSTOMIZE_VERSION=v5.8.1
+          curl -sSLo kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_arm64.tar.gz"
+          tar -xzf kustomize.tar.gz kustomize
           sudo mv kustomize /usr/local/bin/
           sudo snap install yq
       - name: Every overlay builds
@@ -26,13 +32,22 @@ jobs:
       - name: Install tools
         run: |
           set -euo pipefail
-          curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/latest/download/install_kustomize.sh | bash
+          # Pinned, not releases/latest. versions.yaml tools.kustomize is the
+          # source of truth for this string; a workflow cannot read that file
+          # before it has installed yq, so the version is written in here and
+          # the two must be changed together.
+          KUSTOMIZE_VERSION=v5.8.1
+          curl -sSLo kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_arm64.tar.gz"
+          tar -xzf kustomize.tar.gz kustomize
           sudo mv kustomize /usr/local/bin/
       - name: Install Kyverno CLI
         run: |
           set -euo pipefail
-          VERSION=$(curl -s https://api.github.com/repos/kyverno/kyverno/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-          curl -sSL "https://github.com/kyverno/kyverno/releases/download/${VERSION}/kyverno-cli_${VERSION}_linux_arm64.tar.gz" | tar xz
+          # Pinned, not resolved from releases/latest at run time. Same
+          # source-of-truth note as kustomize above: versions.yaml
+          # tools.kyverno_cli holds this string.
+          VERSION=v1.18.2
+          curl -sSL "https://github.com/kyverno/kyverno/releases/download/${VERSION}/kyverno-cli_${VERSION}_linux_arm64.tar.gz" | tar xz kyverno
           sudo mv kyverno /usr/local/bin/
       - name: Policies pass against rendered manifests
         # Real, but not sufficient on its own: every model overlay renders
@@ -43,10 +58,17 @@ jobs:
         # 2026-08-19. Kept anyway as protection against a future overlay
         # that emits a raw Pod; the next step is what actually exercises the
         # three policies.
+        #
+        # `policy/*.yaml`, not `policy/`. With the directory, Kyverno CLI
+        # v1.18.2 prints "Applying 0 policy rule(s)" - it loads nothing,
+        # because policy/ also holds README.md and the tests/ subdirectory.
+        # Run on this machine, 2026-08-19: the directory form loaded 0 rules
+        # and the glob form loaded 7 against the same input. So the step was
+        # not merely narrow in scope; it was inert.
         run: |
           for o in models/*/overlays/*; do
             kustomize build "$o" > /tmp/rendered.yaml
-            kyverno apply policy/ --resource /tmp/rendered.yaml
+            kyverno apply policy/*.yaml --resource /tmp/rendered.yaml
           done
       - name: Policies reject what they claim to reject
         run: kyverno test policy/tests
@@ -70,7 +92,13 @@ jobs:
         # fail on its very first `yq -r` call.
         run: |
           set -euo pipefail
-          curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/latest/download/install_kustomize.sh | bash
+          # Pinned, not releases/latest. versions.yaml tools.kustomize is the
+          # source of truth for this string; a workflow cannot read that file
+          # before it has installed yq, so the version is written in here and
+          # the two must be changed together.
+          KUSTOMIZE_VERSION=v5.8.1
+          curl -sSLo kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_arm64.tar.gz"
+          tar -xzf kustomize.tar.gz kustomize
           sudo mv kustomize /usr/local/bin/
           sudo snap install yq
           curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
@@ -80,6 +108,14 @@ jobs:
         # configured (jetstack for cert-manager, istio for the four Istio
         # charts, kuadrant for the operator). KServe's charts are pulled by
         # OCI reference directly and need no repo add.
+        #
+        # This is a deliberate subset of the seven aliases `task helm:repos`
+        # adds (Taskfile.yml). The smoke job below installs cert-manager,
+        # Istio, Keycloak, KServe, and Kuadrant only - it does not install
+        # KEDA, kube-prometheus-stack, the OTel Collector, or Argo CD, so
+        # kedacore, prometheus-community, open-telemetry, and argo are not
+        # needed here. Adding one of those installs to this job means adding
+        # its alias here as well.
         run: |
           set -euo pipefail
           helm repo add jetstack https://charts.jetstack.io

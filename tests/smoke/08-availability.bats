@@ -3,6 +3,14 @@ setup() {
   BASE="http://llm.localtest.me"
 }
 
+# This assertion and the constraint that makes it true were reconciled on
+# 2026-08-19: patch-resources.yaml's topologySpreadConstraint used
+# whenUnsatisfiable: ScheduleAnyway, which permits both replicas on one node,
+# so the test could fail with a correct manifest. The constraint is now
+# DoNotSchedule. The assertion is deliberately left as-is rather than
+# loosened - the two tests below it (the PDB budget, and the node drain) both
+# assume genuine spread, so a version of this test that passes with both pods
+# on one node would assert nothing.
 @test "two replicas are spread across different nodes" {
   run bash -c "kubectl --context $KUBECTL_CONTEXT -n llm get pods \
     -l serving.kserve.io/inferenceservice=ornith-9b \

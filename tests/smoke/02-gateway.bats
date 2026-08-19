@@ -18,10 +18,59 @@ setup() { load '../lib/helpers'; }
   [ "$output" = "True" ]
 }
 
+# The fixture below is written as a full manifest, not as
+# `kubectl create deployment ... || true`, because namespace llm enforces all
+# three policies in policy/ (validationFailureAction: Enforce). A bare
+# `create deployment` fails require-labels (no app.kubernetes.io/part-of),
+# disallow-floating-tags (an untagged image resolves to :latest), and
+# require-resource-limits (no limits) - and `|| true` swallowed all three, so
+# the suite died 120 seconds later in the curl loop with no stated cause.
+#
+# The image is the digest pinned as images.echo_server in versions.yaml. It
+# is written in literally rather than read with yq so this test needs no yq
+# and no working directory assumption; tests/contract/03-images.bats checks
+# every pin in that file has a linux/arm64 manifest, and the digest here is
+# the same string `yq -r '.images.echo_server' versions.yaml` prints.
 @test "traffic reaches a backend through llm.localtest.me" {
-  k -n llm create deployment echo --image=ealen/echo-server --port=80 2>/dev/null || true
-  k -n llm expose deployment echo --port=80 --name=echo 2>/dev/null || true
-  k apply -f - <<'YAML'
+  run k apply -f - <<'YAML'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo
+  namespace: llm
+  labels:
+    app.kubernetes.io/part-of: llm-serving-stack
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: echo } }
+  template:
+    metadata:
+      labels:
+        app: echo
+        app.kubernetes.io/part-of: llm-serving-stack
+    spec:
+      containers:
+        - name: echo
+          image: ealen/echo-server@sha256:74afa5ffd1f0cd81bea9a3ef2f27341dc7e93ed221f2817a2119c230c25cc8a2
+          ports: [{ containerPort: 80 }]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: echo, namespace: llm }
+spec:
+  selector: { app: echo }
+  ports: [{ name: http, port: 80, targetPort: 80 }]
+YAML
+  # Not `|| true`. If an admission policy rejects this fixture, that is the
+  # finding, and it must surface here rather than as an unexplained timeout
+  # in the curl loop 120 seconds further down.
+  [ "$status" -eq 0 ]
+  run k -n llm rollout status deploy/echo --timeout=120s
+  [ "$status" -eq 0 ]
+  run k apply -f - <<'YAML'
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata: { name: echo, namespace: llm }
@@ -32,6 +81,7 @@ spec:
     - matches: [{ path: { type: PathPrefix, value: /echo } }]
       backendRefs: [{ name: echo, port: 80 }]
 YAML
+  [ "$status" -eq 0 ]
   run wait_for 120 "echo to answer through the gateway" \
     bash -c "curl -sf -o /dev/null http://llm.localtest.me/echo"
   [ "$status" -eq 0 ]

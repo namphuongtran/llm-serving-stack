@@ -11,12 +11,17 @@ setup() { load '../lib/helpers'; }
   [ "$output" -ge 1 ]
 }
 
+# jwt_payload (tests/lib/helpers.bash) handles the base64url alphabet and the
+# missing padding that `base64 -d` alone gets wrong; see its comment. No
+# `2>/dev/null` here either - a decode failure must be visible, not swallowed.
 @test "free tier client gets a token carrying tier=free" {
-  run bash -c "source tests/lib/helpers.bash && get_token llm-tier-free | cut -d. -f2 | base64 -d 2>/dev/null | jq -r .tier"
+  run bash -c "source tests/lib/helpers.bash && jwt_payload \"\$(get_token llm-tier-free)\" | jq -r .tier"
+  [ "$status" -eq 0 ]
   [ "$output" = "free" ]
 }
 
 @test "pro tier client gets a token carrying tier=pro" {
-  run bash -c "source tests/lib/helpers.bash && get_token llm-tier-pro | cut -d. -f2 | base64 -d 2>/dev/null | jq -r .tier"
+  run bash -c "source tests/lib/helpers.bash && jwt_payload \"\$(get_token llm-tier-pro)\" | jq -r .tier"
+  [ "$status" -eq 0 ]
   [ "$output" = "pro" ]
 }
