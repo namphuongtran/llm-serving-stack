@@ -1,0 +1,105 @@
+# In-cluster DNS for the external hostname, so the OIDC issuer resolves from
+# inside a pod.
+#
+# WHY THIS EXISTS. Without it, not one authenticated request succeeds. The
+# AuthPolicy in security/oidc/authpolicy.yaml names
+# `issuerUrl: http://llm.localtest.me/realms/llm`, and Authorino must fetch that
+# issuer's discovery document ITSELF before it can verify any token.
+# `llm.localtest.me` is a public name that resolves to 127.0.0.1, so inside the
+# Authorino pod it means the pod. Authorino's own log, on a live cluster on
+# 2026-08-19:
+#
+#   level=error logger=authorino.service.auth.authpipeline.identity.jwt
+#   msg="failed to discovery openid connect configuration"
+#   issuerUrl="http://llm.localtest.me/realms/llm"
+#   error="Get \"http://llm.localtest.me/realms/llm/.well-known/openid-configuration\":
+#          dial tcp [::1]:80: connect: connection refused"
+#   -> authorized=false response=UNAUTHENTICATED
+#      message="missing openid connect configuration"
+#
+# Every request returned 401 with a valid, correctly-issued JWT. The token's
+# `iss` and the AuthPolicy's `issuerUrl` matched exactly; only DNS did not.
+#
+# WHY A REWRITE, NOT A HOSTS ENTRY. `rewrite name` retargets the query at the
+# gateway's Service NAME, so it keeps working when that Service is deleted and
+# recreated with a different ClusterIP. A `hosts` block would pin an IP that
+# goes stale.
+#
+# WHY THE GATEWAY AND NOT KEYCLOAK DIRECTLY. Keycloak is reached through the
+# same Gateway as everything else: platform/10-istio/install.sh applies an
+# HTTPRoute for host `llm.localtest.me` on paths /realms and /resources. So
+# pointing the name at the gateway gives Authorino the identical path an external
+# client takes, and one issuer string stays valid on both sides. Verified from
+# inside the cluster on 2026-08-19: the discovery document returned HTTP 200 and
+# reported `"issuer":"http://llm.localtest.me/realms/llm"`.
+#
+# THE ALTERNATIVE, considered and not taken: set `KC_HOSTNAME` to an in-cluster
+# URL so the token's `iss` is a name Authorino can already resolve. That needs no
+# DNS change at all, but it makes the discovery document advertise endpoints no
+# external client can reach. This repository only uses client_credentials today,
+# so it would work; it was rejected because a single issuer string valid on both
+# sides is the honest analogue of the split-horizon DNS a real deployment has.
+#
+# ---------------------------------------------------------------------------
+# THE COST OF THIS FILE, STATED PLAINLY.
+#
+# CoreDNS has no `import` directive in kind's Corefile, and `rewrite` must sit
+# inside the `.:53` server block. There is no way to add one line without
+# owning the whole file. So this ConfigMap REPLACES the Corefile that
+# `kindest/node` ships, and everything below except the two rewrite lines is
+# kind's default copied verbatim.
+#
+# That is only safe because the node image is pinned by digest:
+# versions.yaml `kubernetes.kind_node` is
+# kindest/node:v1.36.1@sha256:3489c767... . The Corefile below was read out of a
+# running cluster built from exactly that digest, on 2026-08-19, with
+#   kubectl -n kube-system get cm coredns -o jsonpath='{.data.Corefile}'
+#
+# **Bumping kind_node means re-reading this file.** A newer node image may ship a
+# different Corefile, and this manifest would silently revert whatever changed.
+# tests/smoke/02-gateway.bats asserts the BEHAVIOUR rather than the string, so a
+# drift that breaks resolution fails loudly; a drift that merely loses an
+# unrelated kind improvement would not be caught. Re-read it deliberately.
+#
+# No restart is needed. kind's Corefile ends with `reload`, so CoreDNS picks up a
+# ConfigMap change on its own within about 30 seconds. That is why this file is a
+# plain manifest and not a Job: it works identically on the imperative path and
+# under Argo CD, with no ServiceAccount, no RBAC, and no extra pinned image.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns
+  # kube-system, not istio-system. This is the one object in this directory that
+  # lives outside the layer's own namespace, because CoreDNS belongs to the
+  # cluster. Argo CD applies it from the same directory source; the explicit
+  # namespace here wins over the Application's destination.
+  namespace: kube-system
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+        # THE ONLY ADDITION to kind's default Corefile. Everything else in this
+        # block is verbatim. Placed before `kubernetes` so the rewritten name is
+        # then answered by the cluster zone.
+        rewrite name llm.localtest.me llm-istio.istio-system.svc.cluster.local
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           ttl 30
+        }
+        prometheus :9153
+        forward . /etc/resolv.conf {
+           max_concurrent 1000
+        }
+        cache 30 {
+           disable success cluster.local
+           disable denial cluster.local
+        }
+        loop
+        reload
+        loadbalance
+    }

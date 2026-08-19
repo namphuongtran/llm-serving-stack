@@ -77,9 +77,12 @@ by hand outside `local:up` itself.
 
 > **Unmeasured (2026-08-19):** the wall-clock time of
 > `task local:down && task local:up && bats tests/`, end to end, on this
-> machine. No cluster exists in this authoring pass (the human's machine
-> cannot spare the memory Docker needs for a `kind` cluster alongside this
-> stack), so this has not been run. Once a cluster exists, run that command
+> machine. The memory constraint that once blocked this is gone: Docker Desktop
+> was raised to 23.2 GiB the same day and a cluster ran the whole stack. But it
+> ran through the imperative path, not `task local:up`, so this number is still
+> owed. `docs/deployment-walkthrough.md` has the per-layer timings that came out
+> of that run, totalling 9 minutes 33 seconds for the platform layers, which is a
+> floor for this number and not a substitute for it. Run that command
 > once and record the number here with its date; it is also the starting
 > point for the recovery time objective `bench/recovery-drill.sh` measures in
 > Task 14 (that drill deletes the `llm` namespace and lets Argo CD rebuild

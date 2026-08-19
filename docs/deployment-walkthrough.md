@@ -21,9 +21,11 @@ models loaded it reached **17811 MiB, 75%**. Memory was never the limit, but the
 model layer is most of it.
 
 Getting the model layer up took three fixes, each only visible after the previous
-one landed, and **one of them is still not in this repository**. Read
-[The gap that is still open](#the-gap-that-is-still-open) before trusting a fresh
-`task local:up`.
+one landed. All three are now in the repository, the last one as
+`platform/10-istio/coredns-rewrite.yaml`. That file replaces kind's whole CoreDNS
+Corefile, which is only safe while the node image stays digest-pinned, so read
+[the gap that closed](#the-gap-that-was-open-and-how-it-closed) before bumping
+`kubernetes.kind_node`.
 
 ## Run it
 
@@ -240,22 +242,69 @@ landed. The full record with upstream citations is in
    `http://llm.localtest.me/realms/llm/.well-known/openid-configuration`.
    `llm.localtest.me` resolves to 127.0.0.1, so inside a pod it means the pod.
 
-### The gap that is still open
+### The gap that was open, and how it closed
 
-Fix 3 was applied to the live cluster and **has no home in git**:
+Fix 3 was applied by hand at first and had no home in git. It now does:
+`platform/10-istio/coredns-rewrite.yaml`.
 
 ```
 rewrite name llm.localtest.me llm-istio.istio-system.svc.cluster.local
 ```
 
-added to the `coredns` ConfigMap in `kube-system`, followed by a rollout restart.
-A rewrite to the Service name rather than a hosts entry with an IP, so it
-survives the gateway Service being recreated.
+It is a plain ConfigMap manifest, not a Job, so it works identically on the
+imperative path and under Argo CD with no ServiceAccount, no RBAC, and no extra
+pinned image. `platform/10-istio/install.sh` applies it last, after the Gateway
+exists, and the Argo CD Application already sources that directory, so no inline
+copy is needed and there is nothing to keep in sync.
 
-Until that lands in the repository, a fresh `task local:up` reproduces the 401.
-It is the largest remaining gap. Where it belongs is a design question: `prereqs/`
-alongside the kind config, or `platform/10-istio/` beside the Gateway it points
-at.
+**The cost is real and stated in the file's header.** CoreDNS has no `import`
+directive in kind's Corefile and `rewrite` must sit inside the `.:53` block, so
+there is no way to add one line without owning the whole file. The manifest
+therefore replaces the Corefile that `kindest/node` ships, and everything in it
+except the rewrite is kind's default copied verbatim. That is only safe because
+`versions.yaml` pins the node image by digest. **Bumping `kubernetes.kind_node`
+means re-reading that Corefile.**
+
+Proved by mutation rather than by argument, on 2026-08-19:
+
+| Step | Result |
+|---|---|
+| Restore kind's original Corefile | `/v1/models` with a valid JWT → HTTP 401 |
+| Apply the repo manifest, nothing else | HTTP 200 after about 80 seconds, no restart |
+
+The 80 seconds is CoreDNS's `reload` interval plus Authorino's own retry. It is
+why `install.sh` waits for the name to resolve from a throwaway pod rather than
+running `kubectl rollout status deploy/coredns`: nothing restarts, so a rollout
+check returns immediately and proves nothing. That wrong check was in the script
+for one revision.
+
+> **Untried (2026-08-19):** that Argo CD applies this file cleanly. The
+> walkthrough used the imperative path throughout, so `root-app.yaml` was never
+> applied and no Argo CD Application ever synced. The manifest is a plain
+> ConfigMap in a directory the Application already sources, and its explicit
+> `namespace: kube-system` should win over the Application's `istio-system`
+> destination, but neither claim has been observed. Settle it with
+> `task local:up` on a fresh cluster.
+
+### Two more test defects, found by the same run
+
+`tests/smoke/03-identity.bats` had four tests and all four asked from the HOST.
+Authorino asks from a POD, so none of them could see the failure above. Two
+pod-side tests were added, and writing them surfaced two problems.
+
+The first is in the suite as it stood: test 1 queried `/realms/llm` and read
+`.issuer` from it. That endpoint returns Keycloak's realm info document, whose
+keys are `account-service`, `public_key`, `realm`, `token-service`, and
+`tokens-not-before`. There is no `issuer` field, so `jq -r .issuer` printed `null`
+and the equality check could never pass. It now queries the discovery document,
+which is both where `issuer` lives and what Authorino actually fetches.
+
+The second I wrote myself. The new DNS test first asserted only that
+`getent hosts llm.localtest.me` exited 0 from a pod. The mutation run showed that
+passes with the rewrite removed: the name still resolves, via the upstream
+forwarder, to 127.0.0.1. It was satisfied by the wrong answer. It now asserts the
+resolved address equals the gateway Service's ClusterIP. With that change, both
+new tests fail when the rewrite is absent and pass when it is present.
 
 ### One contract test fails, for a understood reason
 

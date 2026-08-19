@@ -4,18 +4,27 @@ A production-shaped LLM inference platform on Kubernetes, built to be understood
 layer by layer. It runs on a local Apple Silicon Mac first, then on GPU nodes,
 without changing the control plane or the repository shape.
 
-Status: **code-complete, unrun** (checked 2026-08-19). Every manifest, script,
-test, and policy for phase 1 is written and statically checked - `helm
-install --dry-run=client`, `kustomize build`, CRD schemas read from the
-pinned charts themselves, `bash -n` under bash 3.2.57, `bats --count`,
-`actionlint`, and the real `kyverno` CLI. None of it has been observed
-working against a live Kubernetes cluster: the machine building it cannot
-spare the memory Docker needs to run `kind` alongside the rest of this stack.
+Status: **run for the first time on 2026-08-19, and partly proven.** Until that
+day this line read "code-complete, unrun", and everything below it was written
+and statically checked but never observed. A cluster has now run it.
 
-**None of the nine phase 1 acceptance criteria hold as of 2026-08-19, because
-none has been executed.** This is not nine different failures; it is one fact
-(no cluster has run) with nine consequences. They are listed in full under
-"What is unproven" below.
+All thirteen layers came up on a 3-node `kind` cluster and the service answered a
+real request: HTTP 401 without a token, HTTP 200 with a JWT from Keycloak, and a
+streaming chat completion. `docs/deployment-walkthrough.md` is the account, with
+every number dated, and `tools/step-up.sh` is how to repeat it one layer at a
+time.
+
+**Two of the nine phase 1 acceptance criteria now hold. Seven do not, and they
+are not held up by the same thing.** Criterion 1 has not been settled because the
+walkthrough used the imperative path, so `task local:up` itself is still
+unobserved. The rest are untested rather than failing. The table under
+"What is unproven" says which is which.
+
+Running it found seven defects that four separate static review passes had all
+missed: a file mode that broke `task local:up` at its second command, a bash 3.2
+array expansion that killed the KServe install, two selectors naming a label
+Istio removed in 1.24, and three tests that passed while the thing they named was
+broken. Each is recorded where it was found.
 
 Three kinds of gap appear in this repository, and they are not the same kind:
 
@@ -112,25 +121,35 @@ policy/        admission policies, shared by CI and cluster
 
 ## What is unproven
 
-The single most important section of this file. This repository is
-code-complete and unrun, so what follows is not a formality.
+The single most important section of this file. One run on 2026-08-19 settled two
+of the nine criteria and a handful of the markers below; the rest are still owed,
+so what follows is not a formality.
 
 ### The nine phase 1 acceptance criteria
 
-None has been executed. Settle all nine at once with `bats tests/` against a
-live cluster, then record the result and the date here.
+Two hold as of 2026-08-19. Settle the rest with `bats tests/` against a live
+cluster, then record the result and the date here.
 
-| # | Criterion | Settle it |
-|---|---|---|
-| 1 | `task local:up` takes an empty machine to a ready service | `task local:down && task local:up` |
-| 2 | A JWT obtained from Keycloak returns a streamed chat completion | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
-| 3 | A request without a JWT is rejected with 401 | `bats tests/smoke/06-auth-quota.bats` |
-| 4 | Exceeding the token quota returns 429 | `bats tests/smoke/06-auth-quota.bats` |
-| 5 | Grafana shows TTFT p95 and requests waiting from real traffic | `bats tests/smoke/05-observability.bats` |
-| 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | `bats tests/smoke/07-autoscaling.bats` |
-| 7 | Draining a node keeps the service available, PDB holding | `bats tests/smoke/08-availability.bats` |
-| 8 | The recovery drill runs and its recovery time is committed | `task drill:recovery` |
-| 9 | CI is green on an arm64 runner | push this branch, read `.github/workflows/ci.yml`'s result |
+| # | Criterion | Status | Settle it |
+|---|---|---|---|
+| 1 | `task local:up` takes an empty machine to a ready service | **not settled** | `task local:down && task local:up` |
+| 2 | A JWT obtained from Keycloak returns a streamed chat completion | **HOLDS 2026-08-19** | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
+| 3 | A request without a JWT is rejected with 401 | **HOLDS 2026-08-19** | `bats tests/smoke/06-auth-quota.bats` |
+| 4 | Exceeding the token quota returns 429 | untested | `bats tests/smoke/06-auth-quota.bats` |
+| 5 | Grafana shows TTFT p95 and requests waiting from real traffic | untested | `bats tests/smoke/05-observability.bats` |
+| 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | untested | `bats tests/smoke/07-autoscaling.bats` |
+| 7 | Draining a node keeps the service available, PDB holding | untested | `bats tests/smoke/08-availability.bats` |
+| 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
+| 9 | CI is green on an arm64 runner | untested | push this branch, read `.github/workflows/ci.yml`'s result |
+
+Criterion 1 is the one to read carefully. The walkthrough brought every layer up
+through the imperative path, `platform/NN-*/install.sh`, not through
+`task local:up`. So the pull-based path that criterion names has still never run,
+and two things it depends on were only ever applied by hand: the CoreDNS manifest
+and the model overlay. Criterion 2 is met with one caveat recorded in
+`docs/deployment-walkthrough.md`: `tests/contract/01-openai-api.bats` passes 4 of
+5, and the failing one is about this model being a reasoning model, not about the
+API contract.
 
 ### Measurements still owed
 
@@ -145,9 +164,9 @@ which returned **15** on 2026-08-19, across 12 files. Each marker names the
 command that settles it.
 
 It returned 14 earlier the same day. The twelfth file is
-`docs/deployment-walkthrough.md`, and its marker owes the one number the
-walkthrough could not produce: what the model layer costs, because that layer
-does not start yet.
+`docs/deployment-walkthrough.md`, and its marker owes the one number the run could
+not produce: the `max_tokens` at which this model emits `content` rather than only
+`reasoning_content`. 512 was not enough.
 
 The command counts tracked files, and that is the point. It used to be
 `grep -rn ... --exclude-dir=.git --exclude-dir=docs/superpowers`, which did not
@@ -165,15 +184,24 @@ than a number nobody has measured. Find those with:
 git ls-files -z | xargs -0 grep -nE 'Untried \(20[0-9]{2}-'
 ```
 
-which returned **11** on 2026-08-19, across seven files: this one,
-`platform/10-istio/telemetry.yaml`, `platform/12-kyverno/install.sh`,
+which returned **12** on 2026-08-19, across eight files: this one,
+`docs/deployment-walkthrough.md`, `platform/10-istio/telemetry.yaml`,
+`platform/12-kyverno/install.sh`,
 `platform/30-observability/podmonitor.yaml`,
 `platform/30-observability/tempo.yaml`, two in
 `tests/smoke/05-observability.bats`, and four in `.github/workflows/ci.yml`.
 
-It returned 10 earlier the same day. The version sweep that bumped
-`actions/checkout` from v4 to v7 added the eleventh, because v7 needs the node24
-runtime and no local command can prove these runners have it.
+It moved twice on 2026-08-19. From 10 to 11 when `actions/checkout` went v4 to
+v7, because v7 needs the node24 runtime and no local command can prove these
+runners have it. Then to 12 when the stack was first run layer by layer: the
+CoreDNS manifest that run produced has only ever been applied by hand, never by
+Argo CD.
+
+The same day removed two markers that running settled, which is the shape this
+is supposed to take. `platform/30-observability/tempo.yaml` no longer wonders
+whether Tempo 3.0.3 starts, because it does, and
+`platform/30-observability/podmonitor.yaml` no longer wonders whether the gateway
+pod declares port 15020, because it does. Both were replaced by the observation.
 
 The count rising is the expected shape of this work, not a regression. Every
 component added since 2026-08-19 has been written and never run, so each one

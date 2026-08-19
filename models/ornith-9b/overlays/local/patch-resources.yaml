@@ -111,21 +111,22 @@ spec:
     # > worked exactly as designed. FIX 2 pins it by digest in both copies of the
     # > KServe values; see versions.yaml images.kserve_agent.
     # >
-    # > THIRD, revealed by fix 2, and the one still NOT in this repository:
-    # > every authenticated request returned 401 with a valid token, because
+    # > THIRD, revealed by fix 2: every authenticated request returned 401 with a
+    # > valid token, because
     # > Authorino could not fetch the issuer's discovery document. Its own log:
     # >   issuerUrl "http://llm.localtest.me/realms/llm"
     # >   error: dial tcp [::1]:80: connect: connection refused
     # >   -> UNAUTHENTICATED, "missing openid connect configuration"
     # > llm.localtest.me is a public name resolving to 127.0.0.1, so inside the
-    # > pod it means the pod. FIX 3 was a CoreDNS rewrite on the live cluster:
+    # > pod it means the pod. FIX 3 is a CoreDNS rewrite, and it now lives in
+    # > platform/10-istio/coredns-rewrite.yaml:
     # >   rewrite name llm.localtest.me llm-istio.istio-system.svc.cluster.local
     # > After it, discovery returned 200 from inside the cluster and the issuer
-    # > string matched the token's `iss` exactly.
-    # >
-    # > **That third fix is a live-cluster change with no home in git yet.** Until
-    # > it has one, a fresh `task local:up` reproduces the 401. It is the single
-    # > largest gap left, and docs/deployment-walkthrough.md records it.
+    # > string matched the token's `iss` exactly. Proved by mutation the same day:
+    # > reverting kind's Corefile brought the 401 straight back, and reapplying
+    # > that one manifest restored HTTP 200 after about 80 seconds with no
+    # > restart. tests/smoke/03-identity.bats now guards it from the pod side,
+    # > which is the only side that can see this failure.
     # >
     # > END STATE, observed 2026-08-19 15:26 UTC: no token -> 401; valid JWT ->
     # > 200; a streaming chat completion returned 43 SSE data chunks; both

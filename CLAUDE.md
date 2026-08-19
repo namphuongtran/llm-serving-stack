@@ -20,9 +20,29 @@ comment.
 
 ## Current state, and why it matters for every claim you write
 
-The repository is **code-complete and unrun** (as of 2026-08-19). No manifest,
-script, or test has been observed against a live cluster. The build machine
-cannot spare the memory Docker needs for `kind`.
+The repository was **run for the first time on 2026-08-19**. Until that day this
+paragraph said "code-complete and unrun", and the build machine genuinely could
+not spare the memory Docker needs for `kind`. Raising Docker Desktop's allocation
+from 7.7 GiB to 23.2 GiB was the only change that unblocked it.
+
+What that run settles, and what it does not:
+
+- All thirteen layers came up on a 3-node `kind` cluster, and the service
+  answered a real request. Two of the nine acceptance criteria now hold.
+- It used the **imperative path** (`platform/NN-*/install.sh`), not
+  `task local:up`. So the pull-based path is still unobserved, and criterion 1 is
+  still open. Two things it needs were applied by hand: the CoreDNS manifest and
+  the model overlay.
+- `docs/deployment-walkthrough.md` is the account, with a dated number for every
+  layer, and `docs/deployment-log.tsv` is the raw log. `tools/step-up.sh` repeats
+  the run one layer at a time with a memory guard.
+
+**The lesson to carry, not just the status.** That run found seven defects which
+four separate static review passes over the whole repository had all missed: a
+file mode, a bash 3.2 array expansion, two dead label selectors, and three tests
+that passed while the thing they named was broken. Rendering is not admission,
+admission is not scheduling, and a passing test is not a working system. When you
+can run something, run it.
 
 `README.md`'s "What is unproven" section is the tracked account. Update it
 whenever you change what is or is not verified. Do not write that something
@@ -169,7 +189,10 @@ This repository is stricter than the default. The rules are stated in
   - `clusters/local-kind/apps/30-observability.yaml` let Argo CD default the
     Helm release name to the Application name. Every dry-run passed. The
     rendered Service was `observability-kube-prometh-prometheus`, not the
-    `kube-prometheus-stack-prometheus` that four consumers here name.
+    `kube-prometheus-stack-prometheus` that two consumers here name, plus a
+    third reference in this file. "Four" was the number written when this was
+    recorded and it was never counted; `git grep -l kube-prometheus-stack-prometheus`
+    returns three files on 2026-08-19, one of which is this one.
 - **Never edit a document to make a checker pass.** Fix the checker, or record
   the finding as real.
 - Mark anything not yet observed with `> **Unmeasured (<date>):**` or
@@ -184,10 +207,17 @@ runner is small, so autoscaling, availability, benchmark, and recovery are
 excluded on purpose. Each remaining exclusion is named with its own reason in
 the workflow itself. Read those comments before you add a step.
 
-**CI is where this repository proves things.** The development machine cannot
-spare the memory, so every suite that runs at all runs here. Six of thirteen
-smoke suites ran nowhere before 2026-08-19; three of them run now. The CI
-workflow's own comments are the tracked account, including two `Untried`
+**CI is no longer the only place this repository proves things.** That sentence
+held while the development machine could not spare the memory for `kind`; on
+2026-08-19 it could, and the stack ran locally end to end. Both matter now, and
+they catch different classes of defect. Two examples from that day: the KServe
+install script died on bash 3.2 locally and CI could never have seen it, because
+GitHub runners have bash 5; and the `helm/kind-action` cluster-name default
+breaks every suite in CI while the local path is unaffected. Run both.
+
+Six of thirteen smoke suites ran nowhere before 2026-08-19; three of them run in
+CI now, and `tools/step-up.sh` plus a local cluster covers more. The CI
+workflow's own comments are the tracked account, including four `Untried`
 records. The design behind it,
 `docs/superpowers/specs/2026-08-19-ci-coverage-design.md`, is a local working
 document and is not in git.
