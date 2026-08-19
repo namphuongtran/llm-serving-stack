@@ -1,8 +1,12 @@
 # Trace backend. Hand-written, not a Helm chart, and that is a decision rather
 # than a shortcut.
 #
-# CORRECTED 2026-08-19, later the same day. The first version of this comment
-# said the reason was that both Tempo charts are deprecated. That was true of
+# Two passes on 2026-08-19 changed this file. Pass 1 corrected why it is
+# hand-written. Pass 2 moved it from Tempo 2.10.8 to 3.0.3 and rewrote the
+# config below. Both are recorded here, pass 1 first.
+#
+# PASS 1, CORRECTED 2026-08-19. The first version of this comment said the
+# reason was that both Tempo charts are deprecated. That was true of
 # the charts under the `grafana` Helm repo and incomplete as an account, because
 # the maintained successors had already moved:
 #
@@ -38,18 +42,73 @@
 # pinned by digest, with the config written out and read. Nothing about a
 # single Tempo process needs a chart.
 #
+# PASS 2, 2026-08-19: version 2.10.8 -> 3.0.3, and the config rewritten.
+#
+# 2.10.8 was chosen for one reason only: it is the appVersion of
+# grafana-community/tempo 2.2.4. That reason does not survive contact with the
+# release list. Upstream's newest stable release is 3.0.3 (`grafana/tempo`
+# releases via the GitHub API, read 2026-08-19; tag 3.0.3 also resolves on
+# Docker Hub). So a chart this file does not use was holding it a major version
+# behind. The criterion is now "newest upstream stable release", and the
+# chart's appVersion is no longer a criterion at all.
+#
+# Tempo 3.0 removes the ingester module and the compactor target outright. Two
+# statements at tag v3.0.3, both read on 2026-08-19:
+#   - CHANGELOG.md, v3.0.0 section - "[CHANGE] **BREAKING CHANGE** Remove
+#     ingester module [#6959]".
+#   - docs/sources/tempo/set-up-for-tracing/setup-tempo/migrate-to-3.md line 59
+#     - "Ingesters, the scalable single binary (SSB) mode, and the compactor
+#     target are removed."
+# The config this file carried before pass 2 had both an `ingester:` block and a
+# `compactor:` block, so it would not have parsed against 3.0.3 at all.
+#
+# Monolithic mode still needs no Kafka, which is what makes a single Deployment
+# still the right shape: "Monolithic mode: The required components run in a
+# single process using `-target=all`, which is the default. No Kafka is
+# required." (docs/sources/tempo/configuration/_index.md line 101, tag v3.0.3).
+# The same file, line 1470, says the `local` storage backend is "only supported
+# in the monolithic mode", and monolithic is what this is.
+#
 # > **Untried (2026-08-19):** every claim below about Tempo's runtime
 # > behaviour. No cluster has run this.
 # >
-# > The config keys are not invented. Every one was read out of the config that
-# > grafana-community/tempo 2.2.4 renders, whose appVersion is 2.10.8 - the same
-# > version this image is - which carries `server.http_listen_port`,
-# > `distributor.receivers.otlp.protocols.grpc.endpoint`,
-# > `compactor.compaction.block_retention`, `usage_report.reporting_enabled`,
-# > and `storage.trace.backend: local` with the `/var/tempo/traces` and
-# > `/var/tempo/wal` paths used here. The one key that render does not exercise
-# > is `ingester.max_block_duration`, because the chart emits `ingester: {}`;
-# > that key is documented in the same chart's values.yaml at line 91.
+# > The config keys are not invented, and where they come from changed with the
+# > version bump. They are now read out of Tempo's own examples at tag v3.0.3,
+# > not out of a chart render:
+# >   - example/docker-compose/single-binary/tempo.yaml is monolithic with
+# >     `backend: local`, the same shape as this file. It carries
+# >     `server.http_listen_port`,
+# >     `distributor.receivers.otlp.protocols.grpc.endpoint`,
+# >     `storage.trace.backend: local`, `storage.trace.wal.path`,
+# >     `storage.trace.local.path`, and `usage_report.reporting_enabled: false`.
+# >     It has no `ingester:` block and no `compactor:` block.
+# >   - example/docker-compose/migrate-to-3/tempo-v3.yaml is upstream's own 2.x
+# >     to 3.0 pair, and is where retention moved to. It sets `block_retention`
+# >     in two places, `backend_scheduler.provider.compaction.compaction` and
+# >     `backend_worker.compaction`. Both are set below, with the same value,
+# >     because that example sets both.
+# >
+# > Three defaults were read out of modules/livestore/config.go at tag v3.0.3
+# > rather than assumed, because each one could have broken this Deployment:
+# >   - `ReadinessTargetLag` defaults to 0 (line 119), and `ReadinessMaxWait` is
+# >     "Only used if ReadinessTargetLag > 0" (line 65). So the 30 minute
+# >     startup wait migrate-to-3.md warns about does not apply here, and the
+# >     readinessProbe below should not sit unready for half an hour.
+# >   - `MaxBlockDuration` defaults to 30s (line 111). The 2.x config set
+# >     `ingester.max_block_duration: 5m` to make a trace queryable in minutes
+# >     rather than tens of minutes. The 3.0 default is shorter than the value
+# >     that override asked for, so the override is gone and nothing replaces
+# >     it.
+# >   - The live-store writes under /var/tempo as well, so the emptyDir below
+# >     still covers it: `live_store.wal.path` defaults to
+# >     /var/tempo/live-store/traces and `shutdown_marker_dir` to
+# >     /var/tempo/live-store/shutdown-marker (same file, lines 138 and 139).
+# >
+# > One metric name was checked because a smoke test asserts it.
+# > tests/smoke/05-observability.bats queries
+# > `tempo_distributor_spans_received_total`. modules/distributor/distributor.go
+# > at tag v3.0.3 still registers `Namespace: "tempo"` with
+# > `Name: "distributor_spans_received_total"`, so that assertion survives 3.0.
 # >
 # > Keys existing is not the same as this file parsing. Confirm with
 # > `kubectl -n observability logs deploy/tempo` and
@@ -75,12 +134,25 @@ data:
             grpc:
               endpoint: 0.0.0.0:4317
 
-    # Short blocks so a trace becomes queryable in minutes rather than tens of
-    # minutes. This is a debugging cluster, not a retention archive.
-    ingester:
-      max_block_duration: 5m
+    # Retention. In 2.x this was `compactor.compaction.block_retention`. Tempo
+    # 3.0 removed the compactor target, and a backend scheduler plus a backend
+    # worker took over compaction and retention. In monolithic mode both run in
+    # the same process ("Other blocks, including `live_store_client`,
+    # `backend_scheduler`, `backend_worker`, `memberlist`, and `cache`, apply in
+    # both modes but run in-process in monolithic mode." -
+    # docs/sources/tempo/configuration/_index.md line 121, tag v3.0.3).
+    #
+    # The value is set on both, because upstream's own migration example
+    # (example/docker-compose/migrate-to-3/tempo-v3.yaml) sets it on both. The
+    # default is 336h; 24h is deliberate. This is a debugging cluster, not a
+    # retention archive.
+    backend_scheduler:
+      provider:
+        compaction:
+          compaction:
+            block_retention: 24h
 
-    compactor:
+    backend_worker:
       compaction:
         block_retention: 24h
 
@@ -125,9 +197,11 @@ spec:
           # 2026-08-19. The tag names the multi-arch index; the digest names
           # its linux/arm64 child, confirmed by reading the child's config blob
           # (os linux, architecture arm64).
-          image: grafana/tempo:2.10.8@sha256:0a86a9663d64ba036b8a9dfee6a8a4747ad9faf4b176a1402826927bb841933f
+          image: grafana/tempo:3.0.3@sha256:08bb220a78abeb33947149b1c2038ec8a4e68277cfc6b5a9e03203d5b097ebcc
           # Entrypoint is /tempo with no default cmd, read from the image
           # config the same day, so the config file has to be named here.
+          # 3.0.3 did not change this, and it did not change the uid either;
+          # both were re-read from 3.0.3's own config blob, not carried forward.
           args: ["-config.file=/conf/tempo.yaml"]
           ports:
             - { name: otlp-grpc, containerPort: 4317 }
@@ -167,7 +241,14 @@ metadata:
 spec:
   selector: { app: tempo }
   ports:
-    # Only the two ports that exist. The chart's Service published eleven,
+    # Only the two ports that exist. The chart's Service published ten,
     # including UDP jaeger listeners nothing here speaks.
+    #
+    # Said "eleven" until 2026-08-19, contradicting the "ten ports" in this
+    # file's own header. Counted rather than reasoned about:
+    #   helm template t grafana-community/tempo --version 2.2.4 \
+    #     | yq -r 'select(.kind=="Service" and .metadata.name=="t-tempo")
+    #              | .spec.ports | length'
+    # prints 10. The header was right and this line was wrong.
     - { name: otlp-grpc, port: 4317, targetPort: 4317 }
     - { name: http, port: 3200, targetPort: 3200 }

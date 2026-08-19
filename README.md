@@ -151,11 +151,15 @@ than a number nobody has measured. Find those with:
 grep -rnE 'Untried \(20[0-9]{2}-' . --exclude-dir=.git --exclude-dir=docs/superpowers
 ```
 
-which returned **10** on 2026-08-19, across seven files: this one,
+which returned **11** on 2026-08-19, across seven files: this one,
 `platform/10-istio/telemetry.yaml`, `platform/12-kyverno/install.sh`,
 `platform/30-observability/podmonitor.yaml`,
-`platform/30-observability/tempo.yaml`, `tests/smoke/05-observability.bats`, and
-three in `.github/workflows/ci.yml`.
+`platform/30-observability/tempo.yaml`, two in
+`tests/smoke/05-observability.bats`, and four in `.github/workflows/ci.yml`.
+
+It returned 10 earlier the same day. The version sweep that bumped
+`actions/checkout` from v4 to v7 added the eleventh, because v7 needs the node24
+runtime and no local command can prove these runners have it.
 
 The count rising is the expected shape of this work, not a regression. Every
 component added since 2026-08-19 has been written and never run, so each one

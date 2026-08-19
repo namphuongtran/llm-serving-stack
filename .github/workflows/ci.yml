@@ -7,7 +7,17 @@ jobs:
   lint:
     runs-on: ubuntu-24.04-arm   # same architecture as the development machine
     steps:
-      - uses: actions/checkout@v4
+      # v4 -> v7 on 2026-08-19. v7.0.1 is the newest release
+      # (`actions/checkout` releases via the GitHub API, read that day); v4 was
+      # three majors behind. All four checkout steps in this file moved together.
+      #
+      # > **Untried (2026-08-19):** that these runners accept v7. Its action.yml
+      # > at tag v7.0.1 declares `using: node24`, read that day, and v4 declared
+      # > node20. A runner image too old for the node24 runtime fails the step
+      # > with "Unsupported runtime". Nothing local can settle this - the first
+      # > CI run on this branch is the check, and it fails loudly rather than
+      # > silently if the runtime is missing.
+      - uses: actions/checkout@v7
       - name: Install tools
         run: |
           set -euo pipefail
@@ -35,7 +45,7 @@ jobs:
   policy:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install tools
         run: |
           set -euo pipefail
@@ -84,7 +94,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Record the runner size
         # Until 2026-08-19 this workflow asserted "The runner has 4 vCPU" in a
         # comment, with no date and no source. This prints the real numbers
@@ -205,7 +215,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Record the runner size
         # Same reason as the smoke job. This job's whole open question is
         # whether it fits, so the numbers belong in its log.

@@ -22,8 +22,10 @@ spec:
           # env sets, because a sed step nobody runs (the GitOps path in
           # clusters/local-kind/apps/15-keycloak.yaml never runs
           # install.sh) would otherwise leave a placeholder committed here.
-          # Value from versions.yaml images.keycloak, read 2026-08-19.
-          image: quay.io/keycloak/keycloak:26.7.1@sha256:89d56312ace1d9b0bf8168f1a92ea135ba185d2844285f7651cb50774e47c1d8
+          # Value from versions.yaml images.keycloak, read 2026-08-19. Was
+          # 26.7.1 earlier the same day; 26.7.2 is a security release and
+          # versions.yaml records the four CVE numbers.
+          image: quay.io/keycloak/keycloak:26.7.2@sha256:ba6d39874fce41e8cf7c1dec79b22da28ef6201ef4c2d23a38ea1ab68ecfbae0
           args: ["start-dev", "--import-realm"]
           env:
             - { name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin }
