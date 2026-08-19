@@ -144,6 +144,22 @@ grep -rn '\*\*Unmeasured (20' . --exclude-dir=.git --exclude-dir=docs/superpower
 which returned **14** on 2026-08-19, across 11 files. Each marker names the
 command that settles it.
 
+`Untried` is the companion marker, for a mechanism nobody has exercised rather
+than a number nobody has measured. Find those with:
+
+```
+grep -rnE 'Untried \(20[0-9]{2}-' . --exclude-dir=.git --exclude-dir=docs/superpowers
+```
+
+which returned **6** on 2026-08-19, in this file, `platform/12-kyverno/install.sh`,
+`platform/30-observability/podmonitor.yaml`, and three in
+`.github/workflows/ci.yml`.
+
+The date digits in that pattern are not decoration. Without them the command
+matches the line that documents it, and reports 7. The `Unmeasured` pattern
+above dodges the same trap a different way, by requiring the `**` a real marker
+carries.
+
 Two details in that pattern are deliberate, and both were found by running it
 rather than by reasoning about it. It matches the marker form `**Unmeasured (`
 rather than the bare phrase, so it does not count this paragraph or any other

@@ -37,6 +37,67 @@ spec:
         # processed." (Counter)
         - record: llmstack:tokens_out_total
           expr: sum(llamacpp:tokens_predicted_total) or vector(0)
+        # llamacpp:prompt_tokens_total - "Number of prompt tokens processed."
+        # (Counter). The input side of the pair above. Prefill and decode are
+        # different work with different costs, and one number for "tokens"
+        # hides which of the two is slow.
+        - record: llmstack:tokens_in_total
+          expr: sum(llamacpp:prompt_tokens_total) or vector(0)
+
+        # Added 2026-08-19. The three rules above were the whole of this file's
+        # engine coverage, which left four series this engine already exposes
+        # unused - including the one below, the only per-token latency signal
+        # llama.cpp reports at all.
+        #
+        # llamacpp:tokens_predicted_seconds_total - "Predict process time in
+        # seconds." (Counter), over llamacpp:tokens_predicted_total above.
+        # Both names come from the same pinned README as every other left-hand
+        # series here.
+        #
+        # This is the other half of what a user feels. TTFT below says when the
+        # answer starts. This says how fast it is written afterwards, and
+        # unlike TTFT the engine reports it, so this needs no prober.
+        #
+        # rate() on both sides rather than a bare ratio of counters, so the
+        # value means "seconds per token over the last 5 minutes" and not
+        # "averaged since the pod started". sum() wraps each rate separately
+        # because a mean of per-replica means is not the mean across replicas.
+        #
+        # Deliberately no `or vector(0)`, for exactly the reason the TTFT rules
+        # below have none: an absent value means no tokens were generated in
+        # the window, and 0 seconds per token would read as infinitely fast.
+        - record: llmstack:seconds_per_output_token
+          expr: sum(rate(llamacpp:tokens_predicted_seconds_total[5m])) / sum(rate(llamacpp:tokens_predicted_total[5m]))
+
+        # llamacpp:n_busy_slots_per_decode - "Average number of busy slots per
+        # llama_decode() call." (Gauge)
+        #
+        # Batching efficiency, and the signal that explains the other two.
+        # Every decode step costs roughly the same whether one slot is busy or
+        # all of them, so a low number under load means capacity is being
+        # thrown away, and a number at the slot limit means the engine is
+        # genuinely full. Neither requests_running nor throughput shows this on
+        # its own.
+        #
+        # avg(), not sum(): the engine already reports an average per decode
+        # call, so summing across replicas would produce a number with no
+        # meaning. No `or vector(0)` - an idle engine and an unscraped one must
+        # not look the same.
+        - record: llmstack:batch_occupancy
+          expr: avg(llamacpp:n_busy_slots_per_decode)
+
+        # llamacpp:n_tokens_max - "High watermark of the context size
+        # observed." (Counter)
+        #
+        # The closest thing this engine has to a memory-pressure signal. ADR
+        # 0006 records that llama.cpp reports no KV-cache series at all, so
+        # this watermark is what there is: it says how close real traffic has
+        # come to the context limit the runtime was started with.
+        #
+        # max(), not sum(): a watermark across replicas is the highest one, not
+        # their total.
+        - record: llmstack:context_tokens_max
+          expr: max(llamacpp:n_tokens_max)
 
         # Time-to-first-token has no engine-reported source in phase 1.
         # llama.cpp's /metrics exposes only the counters and gauges named
@@ -58,6 +119,61 @@ spec:
           expr: quantile_over_time(0.5, llm_ttft_probe_seconds[15m])
         - record: llmstack:ttft_seconds:p95
           expr: quantile_over_time(0.95, llm_ttft_probe_seconds[15m])
+
+    # Gateway-side signals, added 2026-08-19. Nothing in this group comes
+    # from the engine, and that is the point: llama.cpp reports no HTTP status
+    # code and no request latency of any kind (ADR 0006 lists its complete
+    # metric set), so error rate and edge latency cannot come from it. They
+    # come from the Envoy in front of it, which already produces them.
+    #
+    # Before this group existed the data was produced and thrown away.
+    # podmonitor.yaml scraped only predictor pods in namespace llm, and the
+    # gateway lives in istio-system, so nothing collected it. A second
+    # PodMonitor in that file now does.
+    #
+    # Metric and label names read from Istio's own reference documentation on
+    # 2026-08-19, https://istio.io/latest/docs/reference/config/metrics/ :
+    # istio_requests_total is a COUNTER, istio_request_duration_milliseconds is
+    # a DISTRIBUTION measured in MILLISECONDS (hence the division below), and
+    # response_code is documented as applying to HTTP metrics.
+    #
+    # Documentation-derived, not read from a live endpoint, exactly like the
+    # llamacpp:* names above. A recording rule over a series that does not
+    # exist is silent rather than an error, so
+    # tests/smoke/05-observability.bats carries a test whose only job is to
+    # fail loudly if the gateway target is not actually being scraped.
+    #
+    # No `reporter=` filter and no workload filter. The gateway is the only
+    # thing this repository scrapes that emits istio_requests_total at all, so
+    # a filter here could only narrow a correct result to an empty one.
+    - name: llmstack.gateway
+      interval: 15s
+      rules:
+        # Request rate by status, which is what turns "something is wrong" into
+        # "401s are up" or "the engine is returning 500s".
+        - record: llmstack:gateway_requests:rate5m
+          expr: sum by (response_code) (rate(istio_requests_total[5m]))
+
+        # Error ratio, written so that the series exists exactly when the
+        # answer is known. If traffic is flowing the denominator exists, so a
+        # healthy service reports a real 0. If nothing is scraped, or no
+        # traffic has arrived, the denominator is absent and so is the ratio.
+        # A bare `or vector(0)` on the numerator alone would report a confident
+        # zero for an unscraped gateway, which is the failure this file's other
+        # comments keep warning about.
+        - record: llmstack:gateway_error_ratio:rate5m
+          expr: (sum(rate(istio_requests_total{response_code=~"5.."}[5m])) or vector(0)) / sum(rate(istio_requests_total[5m]))
+
+        # Edge latency. This is whole-request duration, so for a streamed
+        # answer it measures until the LAST token, not the first. TTFT is the
+        # separate number above, and the two must not be confused: a long p95
+        # here is normal for long generations and says nothing about
+        # responsiveness on its own.
+        #
+        # Divided by 1000 because Istio's histogram is in milliseconds and
+        # every other duration in this file is in seconds.
+        - record: llmstack:gateway_request_seconds:p95
+          expr: histogram_quantile(0.95, sum by (le) (rate(istio_request_duration_milliseconds_bucket[5m]))) / 1000
 
     # Pushgateway serves the last value it was ever given, forever - a dead
     # ttft-prober CronJob does not clear llm_ttft_probe_seconds, it freezes

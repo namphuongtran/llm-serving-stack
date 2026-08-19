@@ -24,9 +24,16 @@ start_prom_portforward() {
   [ "$output" -ge 1 ]
 }
 
+# Only series whose recording rule ends in `or vector(0)` are asserted here.
+# The four rules added on 2026-08-19 divide (llmstack:seconds_per_output_token)
+# or read a gauge (llmstack:batch_occupancy, llmstack:context_tokens_max), and
+# recording-rules.yaml deliberately gives those no `or vector(0)`, because an
+# absent value must not be reported as a confident zero. So they are absent
+# until real traffic has flowed, and asserting them here would make this test
+# depend on load rather than on wiring.
 @test "normalised llmstack series exist" {
   start_prom_portforward
-  for series in llmstack:requests_running llmstack:tokens_out_total; do
+  for series in llmstack:requests_running llmstack:tokens_out_total llmstack:tokens_in_total; do
     run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode \"query=$series\" | jq -r '.data.result | length'"
     [ "$output" -ge 1 ]
   done
@@ -42,7 +49,10 @@ start_prom_portforward() {
 # instead of the recording rule silently going to a permanent zero.
 @test "raw engine series backing the normalisation still exist" {
   start_prom_portforward
-  for series in llamacpp:requests_processing llamacpp:requests_deferred llamacpp:tokens_predicted_total; do
+  for series in llamacpp:requests_processing llamacpp:requests_deferred \
+                llamacpp:tokens_predicted_total llamacpp:prompt_tokens_total \
+                llamacpp:tokens_predicted_seconds_total \
+                llamacpp:n_busy_slots_per_decode llamacpp:n_tokens_max; do
     run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode \"query=$series\" | jq -r '.data.result | length'"
     [ "$output" -ge 1 ]
   done
@@ -58,4 +68,38 @@ start_prom_portforward() {
 @test "otel collector accepts OTLP" {
   run k get deploy -n observability otel-collector -o jsonpath='{.status.availableReplicas}'
   [ "$output" -ge 1 ]
+}
+
+# Added 2026-08-19 with the istio-gateway PodMonitor. This test exists because
+# of the failure mode, not the feature: a PodMonitor whose selector or port
+# does not match discovers no targets and reports no error, so every
+# llmstack:gateway_* recording rule would go permanently silent and the
+# dashboard panels would sit empty looking exactly like a quiet service.
+#
+# `up{namespace="istio-system"}` rather than a job name: the Prometheus
+# Operator copies the pod's namespace onto every PodMonitor target, and this
+# repository scrapes nothing else in that namespace, whereas the `job` label's
+# value depends on pod labels this repository does not set.
+@test "prometheus is scraping the istio gateway, not only the predictor" {
+  start_prom_portforward
+  run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode 'query=up{namespace=\"istio-system\"}' | jq -r '.data.result | length'"
+  [ "$output" -ge 1 ]
+}
+
+# The same argument as "raw engine series backing the normalisation still
+# exist" above, for the gateway side. Both names were read from Istio's own
+# reference documentation on 2026-08-19
+# (https://istio.io/latest/docs/reference/config/metrics/) rather than from a
+# live endpoint, so this is the test that turns a rename upstream into a red
+# run instead of three silent recording rules.
+#
+# istio_requests_total needs at least one request to have passed the gateway.
+# The CI observability job runs tests/contract/ before this suite for exactly
+# that reason.
+@test "raw gateway series backing the normalisation still exist" {
+  start_prom_portforward
+  for series in istio_requests_total istio_request_duration_milliseconds_bucket; do
+    run bash -c "curl -sf --get $PROM/api/v1/query --data-urlencode \"query=$series\" | jq -r '.data.result | length'"
+    [ "$output" -ge 1 ]
+  done
 }

@@ -24,17 +24,17 @@ helm upgrade --install pushgateway prometheus-community/prometheus-pushgateway \
 kubectl apply -f platform/30-observability/recording-rules.yaml
 kubectl apply -f platform/30-observability/ttft-prober-cronjob.yaml
 
-# Scrape the predictor. KServe pods expose the engine port directly.
-kubectl apply -f - <<'YAML'
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata: { name: llm-predictors, namespace: observability }
-spec:
-  namespaceSelector: { matchNames: [llm] }
-  selector:
-    matchExpressions: [{ key: serving.kserve.io/inferenceservice, operator: Exists }]
-  podMetricsEndpoints: [{ port: http, path: /metrics, interval: 15s }]
-YAML
+# Scrape the predictor and the gateway. Two PodMonitors, both in
+# podmonitor.yaml.
+#
+# This used to be an inline heredoc holding a second, hand-kept copy of the
+# llm-predictors PodMonitor, with podmonitor.yaml carrying the first. Applying
+# the file instead removes that duplication - on 2026-08-19 the two copies were
+# still identical, but only because nobody had edited one of them, and the
+# gateway PodMonitor added that day would have needed a third copy. The objects
+# in that file declare `namespace: observability` themselves, so a plain
+# `kubectl apply -f` places them the same way the kustomization does.
+kubectl apply -f platform/30-observability/podmonitor.yaml
 
 kubectl -n observability create configmap llm-serving-dashboard \
   --from-file=platform/30-observability/dashboards/llm-serving.json \

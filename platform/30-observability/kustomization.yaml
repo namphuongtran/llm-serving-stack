@@ -1,6 +1,8 @@
-# The declarative half of this layer's install.sh: the parts that were plain
+# The declarative half of this layer's install.sh: the parts that are plain
 # `kubectl apply -f` calls (recording-rules.yaml, ttft-prober-cronjob.yaml,
-# podmonitor.yaml) plus a ConfigMap install.sh built with `kubectl create
+# podmonitor.yaml - install.sh applies the same three files, so neither path
+# holds a private copy of any object) plus a ConfigMap install.sh built with
+# `kubectl create
 # configmap ... --dry-run=client | kubectl label -f - ... | kubectl apply -f
 # -`. That last one is exactly the shape Task 12's audit calls out by name
 # ("the Keycloak realm ConfigMap built by a shell script" - the same shape

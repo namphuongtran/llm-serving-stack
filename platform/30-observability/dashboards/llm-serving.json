@@ -113,8 +113,130 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Prefix cache hit rate** and **KV cache utilisation** are vLLM metrics and arrive in phase 2. llama.cpp does not emit the KV cache events these depend on. See `docs/adr/0006-metric-normalisation.md`. This panel is deliberately text: an empty graph is indistinguishable from a broken one.\n\nThe TTFT panel above is not this engine's own signal either: it comes from a client-side prober CronJob (`platform/30-observability/ttft-prober-cronjob.yaml`), because llama.cpp exposes no latency histogram of any kind. It is labelled in its own title for the same reason - a synthetic number must never look like a served one. Its freshness stat panel exists because a dead prober would otherwise look identical to a working one."
+        "content": "**Prefix cache hit rate** and **KV cache utilisation** are vLLM metrics and arrive in phase 2. llama.cpp does not emit the KV cache events these depend on. See `docs/adr/0006-metric-normalisation.md`. This panel is deliberately text: an empty graph is indistinguishable from a broken one.\n\nThe TTFT panel above is not this engine's own signal either: it comes from a client-side prober CronJob (`platform/30-observability/ttft-prober-cronjob.yaml`), because llama.cpp exposes no latency histogram of any kind. It is labelled in its own title for the same reason - a synthetic number must never look like a served one. Its freshness stat panel exists because a dead prober would otherwise look identical to a working one.\n\nThe **context high-watermark** panel below is the nearest substitute this engine allows for KV cache utilisation. It is not the same thing: it reports the largest context seen, not how full the cache is now, and it never falls. Read it as \"how close has real traffic come to the context limit\", not as headroom."
       }
+    },
+    {
+      "title": "How fast is the answer written? seconds per output token (reported by the engine)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": null,
+      "targets": [
+        {
+          "expr": "llmstack:seconds_per_output_token",
+          "legendFormat": "s/token"
+        }
+      ]
+    },
+    {
+      "title": "Is batching working? average busy slots per decode call",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "datasource": null,
+      "targets": [
+        {
+          "expr": "llmstack:batch_occupancy",
+          "legendFormat": "busy slots"
+        }
+      ]
+    },
+    {
+      "title": "Prefill vs decode: input and output tokens per second",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": null,
+      "targets": [
+        {
+          "expr": "rate(llmstack:tokens_in_total[1m])",
+          "legendFormat": "in (prefill)"
+        },
+        {
+          "expr": "rate(llmstack:tokens_out_total[1m])",
+          "legendFormat": "out (decode)"
+        }
+      ]
+    },
+    {
+      "title": "Context high-watermark, in tokens (closest thing this engine reports to memory pressure)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": null,
+      "targets": [
+        {
+          "expr": "llmstack:context_tokens_max",
+          "legendFormat": "max context seen"
+        }
+      ]
+    },
+    {
+      "title": "Is anything failing? request rate by status, at the gateway",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "datasource": null,
+      "targets": [
+        {
+          "expr": "llmstack:gateway_requests:rate5m",
+          "legendFormat": "{{response_code}}"
+        }
+      ]
+    },
+    {
+      "title": "5xx ratio at the gateway (absent means unknown, not healthy)",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 32
+      },
+      "datasource": null,
+      "targets": [
+        {
+          "expr": "llmstack:gateway_error_ratio:rate5m"
+        }
+      ]
+    },
+    {
+      "title": "Whole-request p95 at the gateway (to the LAST token, not the first)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 32
+      },
+      "datasource": null,
+      "targets": [
+        {
+          "expr": "llmstack:gateway_request_seconds:p95",
+          "legendFormat": "p95 s"
+        }
+      ]
     }
   ]
 }

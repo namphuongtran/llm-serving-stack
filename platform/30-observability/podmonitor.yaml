@@ -1,9 +1,11 @@
-# Extracted from the heredoc platform/30-observability/install.sh used to
-# apply this same object imperatively. Task 12 (GitOps) needs a real file: an
-# Argo CD Application can source a git path, not a shell script's heredoc.
-# install.sh keeps its own copy of this heredoc; the two are identical, and
-# install.sh remains the manual/legacy path now that `task local:up` drives
-# everything through Argo CD instead (see clusters/local-kind/apps/).
+# The scrape targets for this layer, and the only copy of them. Task 12
+# (GitOps) needed a real file, because an Argo CD Application can source a git
+# path and not a shell script's heredoc.
+#
+# Both paths now read this one file. install.sh used to hold its own heredoc
+# copy of the first PodMonitor below; on 2026-08-19 it was changed to
+# `kubectl apply -f platform/30-observability/podmonitor.yaml` instead, so
+# there is nothing left to keep in step by hand.
 #
 # Scrapes the predictor directly: KServe pods expose the engine port, not a
 # separate metrics port.
@@ -17,3 +19,55 @@ spec:
   selector:
     matchExpressions: [{ key: serving.kserve.io/inferenceservice, operator: Exists }]
   podMetricsEndpoints: [{ port: http, path: /metrics, interval: 15s }]
+---
+# Added 2026-08-19. The PodMonitor above scrapes only predictor pods in
+# namespace llm, so until now nothing collected the gateway's own metrics -
+# istio_requests_total and istio_request_duration_milliseconds were produced on
+# every request and discarded. They are the only source in this stack for HTTP
+# status codes and request latency, because llama.cpp reports neither (ADR
+# 0006 lists its complete metric set).
+#
+# `portNumber: 15020`, not `port: <name>` and not `targetPort`. Three reasons,
+# all read out of the PodMonitor CRD shipped with kube-prometheus-stack 88.5.0
+# on 2026-08-19:
+#   - `port` matches a container port by NAME, and its own description says
+#     "If the pod doesn't expose a port with the same name, it will result in
+#     no targets being discovered". A silently empty scrape is the failure this
+#     layer's recording-rules.yaml keeps warning about, and the port name on an
+#     istiod-generated gateway pod is not something this repository can check
+#     without a cluster.
+#   - `targetPort` is marked "Deprecated: use 'port' or 'portNumber' instead"
+#     in that same CRD.
+#   - `portNumber` takes an integer, so it does not depend on a name at all.
+#
+# 15020 with path /stats/prometheus is the merged endpoint Istio serves when
+# meshConfig has enablePrometheusMerge: true. That setting is on: rendering
+# istiod 1.30.3 with this repository's own install arguments on 2026-08-19
+# produced a mesh ConfigMap containing `enablePrometheusMerge: true`.
+#
+# > **Untried (2026-08-19):** that an istiod-generated gateway pod declares
+# > container port 15020, and that it carries the label selected below. The CRD
+# > states plainly that `portNumber` still requires the pod to declare the
+# > port ("This cannot be used to enable scraping of an undeclared port"), so
+# > if it does not, this discovers nothing and every llmstack:gateway_* rule
+# > goes silent. Confirm both with:
+# >   kubectl -n istio-system get pod -l istio.io/gateway-name=llm \
+# >     -o jsonpath='{.items[0].spec.containers[*].ports[*].containerPort}'
+# > tests/smoke/05-observability.bats has a test that fails if this scrape
+# > produces no target, so the silence is caught rather than believed.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: istio-gateway
+  namespace: observability
+spec:
+  namespaceSelector: { matchNames: [istio-system] }
+  selector:
+    # Selected by existence rather than by value, so a second Gateway added
+    # later is scraped without editing this file. istiod sets this label on the
+    # Deployment it generates for a Gateway API Gateway.
+    matchExpressions: [{ key: istio.io/gateway-name, operator: Exists }]
+  podMetricsEndpoints:
+    - portNumber: 15020
+      path: /stats/prometheus
+      interval: 15s
