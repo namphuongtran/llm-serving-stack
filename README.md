@@ -229,7 +229,16 @@ exactly `task local:down && task local:up && bats tests/` - the acceptance
 test for the whole repository, and itself criterion 1 under "What is
 unproven" above.
 
-`task token`, `task chat`, `task local:status`, and `task drill:drain` remain
-stubs (`task --list-all` shows every task; a stub prints what it would do
-rather than doing it). Everything else above runs a real command even though
-none has been run against a live cluster yet.
+`task local:status` and `task drill:drain` remain stubs (`task --list-all`
+shows every task; a stub prints what it would do rather than doing it).
+Everything else above runs a real command, even though none has been run
+against a live cluster yet.
+
+`task chat` is the only human-facing way to reach the model here. It goes
+through the gateway, so one command exercises the route, the `AuthPolicy`, and
+the `TokenRateLimitPolicy`:
+
+```bash
+task chat -- "Explain sync waves in two sentences."
+CLIENT=llm-tier-free task chat    # spend the free tier's budget and watch the 429
+```

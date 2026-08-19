@@ -1,7 +1,8 @@
 # Single entry point for local operations.
 #
-# Remaining stubs (token, chat, local:status, drill:drain) print what they
-# will do; every other task now runs the real command. `test:smoke`,
+# Remaining stubs (local:status, drill:drain) print what they will do; every
+# other task runs the real command. token and chat stopped being stubs on
+# 2026-08-19 and now call tools/token.sh and tools/chat.sh. `test:smoke`,
 # `test:contract`, and `lint` were wired to their real commands in Task 12,
 # because tests/smoke, tests/contract, and every overlay this repository has
 # at that point already exist and need no cluster to build or parse.
@@ -99,14 +100,18 @@ tasks:
   # --- using the service ---------------------------------------------------
 
   token:
-    desc: Obtain a JWT from Keycloak
+    desc: Print a JWT from Keycloak (task token -- llm-tier-free)
+    # The grant lives in tools/token.sh, not here. go-task 3.53.1 rejects a
+    # colon followed by a space inside a cmds string, and an
+    # `Authorization: Bearer` header contains one - see the header comment on
+    # that script for the confirmation.
     cmds:
-      - echo "TODO - client credentials grant against http://{{.HOSTNAME}}/realms/llm"
+      - ./tools/token.sh {{.CLI_ARGS}}
 
   chat:
-    desc: Send one streaming chat completion
+    desc: Send one streaming chat completion (task chat -- "your prompt")
     cmds:
-      - echo "TODO - POST /v1/chat/completions with the JWT, stream the response"
+      - ./tools/chat.sh {{.CLI_ARGS}}
 
   # --- verification --------------------------------------------------------
 

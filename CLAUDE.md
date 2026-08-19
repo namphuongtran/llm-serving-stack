@@ -53,8 +53,13 @@ name: `bats -f "<name substring>" tests/smoke/06-auth-quota.bats`.
 
 Run one benchmark scenario: `SCENARIOS=bench/scenarios/01-short.json ./bench/run.sh`.
 
-`task token`, `task chat`, `task local:status`, and `task drill:drain` are
-stubs. They print what they would do. Everything else runs a real command.
+`task local:status` and `task drill:drain` are stubs. They print what they
+would do. Everything else runs a real command.
+
+`task token` and `task chat` are real as of 2026-08-19. `task chat -- "your
+prompt"` streams one answer through the gateway, so the request passes the
+AuthPolicy and the TokenRateLimitPolicy on its way. `CLIENT=llm-tier-free task
+chat` is how you watch the quota cut you off.
 
 ### Checks that need no cluster
 
@@ -88,6 +93,7 @@ container serving the OpenAI API.
 | `policy/` | Kyverno policies, plus `policy/tests/` fixtures used by CI and `task policy` |
 | `bench/` | `run.sh`, `harness.py`, `summarise.py`, scenarios, dated results |
 | `tests/smoke`, `tests/contract` | bats suites, sharing `tests/lib/helpers.bash` |
+| `tools/` | Small client scripts a human runs. `token.sh` and `chat.sh` back `task token` and `task chat`. Both source `tests/lib/helpers.bash` for the grant rather than reimplementing it, as `bench/run.sh` already does |
 
 Four boundaries hold the design together. Breaking one is a design change, not
 a fix.
