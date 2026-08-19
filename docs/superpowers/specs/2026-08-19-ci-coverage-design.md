@@ -4,7 +4,18 @@ Date: 2026-08-19.
 
 ## Status
 
-Approved in conversation on 2026-08-19. Not yet implemented.
+Approved in conversation on 2026-08-19. **Implemented the same day, in commit
+`7e32940`.** Nothing in it has run against a cluster.
+
+**Every line number in this document refers to the state before `7e32940`.**
+The change moved most of them. Several cited passages no longer exist, because
+this design replaced them: `.github/workflows/ci.yml:150` said "The runner has
+4 vCPU", and `:112` said "seven aliases". Resolve any citation here with
+`git show 7e32940^:<file>`, not against the working tree.
+
+That is a property of a design document, not a defect in it. A design states
+what it found and what it intends to change. Rewriting its citations after the
+fact would erase the before state it exists to record.
 
 Supersedes `2026-08-19-first-run-measurement-design.md`, which planned the same
 proving work on the development machine. The owner of that machine declined to
