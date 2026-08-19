@@ -4,8 +4,21 @@ Date: 2026-08-19.
 
 ## Status
 
-Approved in conversation on 2026-08-19. Not yet executed. No command in this
-document has been run.
+**Superseded on 2026-08-19, before any part of it ran.** The plan targeted the
+development machine. The owner of that machine declined to run a 24 GiB Docker
+allocation on it. See
+`docs/superpowers/specs/2026-08-19-ci-coverage-design.md`, which moves the
+proving work onto GitHub Actions runners instead.
+
+Two sections here are not superseded and are still the current record:
+
+- "The arithmetic that shapes the plan". The 18.4 Gi steady-state figure and
+  its sources still hold.
+- "Decision: kind on Docker Desktop, not k3s". Still the standing decision,
+  with the same rule for reopening it.
+
+Everything else describes a run that will not happen on that machine. No
+command in this document was ever run.
 
 ## Why this exists
 
