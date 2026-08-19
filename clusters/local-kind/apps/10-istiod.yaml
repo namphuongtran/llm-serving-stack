@@ -29,6 +29,18 @@ spec:
               opentelemetry:
                 service: otel-collector.observability.svc.cluster.local
                 port: 4317
+  # istiod writes caBundle and failurePolicy on this webhook after it starts,
+  # so git can never match the cluster. Same cause as 10-istio-base.yaml.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: istio-validator-istio-system
+      jsonPointers:
+        - /webhooks/0/failurePolicy
+        - /webhooks/0/clientConfig/caBundle
   syncPolicy:
     automated: { prune: true, selfHeal: true }
-    syncOptions: [CreateNamespace=true]
+    retry:
+      limit: 20
+      backoff: { duration: 15s, factor: 2, maxDuration: 5m }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

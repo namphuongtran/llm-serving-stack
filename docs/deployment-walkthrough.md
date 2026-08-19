@@ -296,13 +296,26 @@ running `kubectl rollout status deploy/coredns`: nothing restarts, so a rollout
 check returns immediately and proves nothing. That wrong check was in the script
 for one revision.
 
-> **Untried (2026-08-19):** that Argo CD applies this file cleanly. The
-> walkthrough used the imperative path throughout, so `root-app.yaml` was never
-> applied and no Argo CD Application ever synced. The manifest is a plain
-> ConfigMap in a directory the Application already sources, and its explicit
-> `namespace: kube-system` should win over the Application's `istio-system`
-> destination, but neither claim has been observed. Settle it with
-> `task local:up` on a fresh cluster.
+**SETTLED 2026-08-20**, by `task local:up` on a cluster created from empty.
+Both claims the old marker made were guesses, and both hold.
+
+| Claim | Observed |
+|---|---|
+| Argo CD applies the file | `ConfigMap/kube-system/coredns` is `Synced`, tracked as `istio-gateway:/ConfigMap:kube-system/coredns` |
+| The manifest's `namespace: kube-system` beats the Application's `istio-system` destination | It did. The object is in `kube-system` |
+| `Prune=false` survives the round trip | The live object carries `argocd.argoproj.io/sync-options: Prune=false` |
+
+The functional check, not only the status field. `llm-istio` had ClusterIP
+`10.96.82.77`, and from a throwaway pod in `kube-system`:
+
+```
+getent hosts llm.localtest.me
+10.96.82.77       llm.localtest.me  llm.localtest.me
+```
+
+So the rewrite reached the cluster through the pull path and works there. Note
+that the rest of that run failed, for six unrelated reasons recorded below in
+"The pull-based path". This one file was not among them.
 
 ### Two more test defects, found by the same run
 
@@ -354,6 +367,250 @@ measure reasoning throughput and report an empty answer as a success.
 > `content`. 512 was not enough and the per-slot context is 2048. Settle it by
 > raising the limit until `content` is non-empty, then decide whether the test
 > should raise its own limit or assert on `reasoning_content` too.
+
+## The pull-based path, first run 2026-08-20
+
+Everything above used the imperative path, `platform/NN-*/install.sh`. This
+section is the other path, `task local:up`, run for the first time on
+2026-08-20 against a cluster deleted and recreated from empty.
+
+It did not come up. It found seven defects, and none of them could be seen
+from the imperative path.
+
+The run: started 23:23:27Z, exited **201** at 23:56:05Z, 32 minutes and 38
+seconds. Three Applications met the Synced condition (`root-app`,
+`cert-manager`, `gateway-api-crds`) and fourteen timed out.
+
+That exit code is itself the check on the fix. On the same cluster the old
+one-line wait exited **0 in one second**; the replacement took the full 30
+minute timeout and then failed. Both were reading the same broken cluster.
+
+Memory was never the constraint. The run peaked at **7502 MiB of 23744 MiB, 30
+per cent**, with 57 pods, at 23:38:58Z, over 93 samples taken every 20 seconds. The imperative run peaked at 17855 MiB,
+but by then the model weights were loaded. Here the model was never deployed at
+all, for the reason in defect 5.
+
+### 1. Every Application pointed at a different program
+
+Eight lines read `targetRevision: HEAD`, one in each of eight files. Argo CD
+resolves `HEAD` to the remote default branch, and that branch held an unrelated
+C# project. On 2026-08-20 `git ls-tree --name-only origin/main` printed
+
+```
+OrderShare.sln
+OrderShare
+README.md
+packages
+```
+
+So `root-app` reported
+
+```
+type: ComparisonError
+message: Failed to load target state: ... rpc error: code = Unknown desc =
+         clusters/local-kind/apps: app path does not exist
+```
+
+and created none of its 15 children.
+
+The files now read `targetRevision: main`, and this branch was fast-forwarded
+into `main` the same day so that the value is true. `main` was already an
+ancestor of the branch, so no merge commit was needed.
+
+Counted rather than recalled, with
+
+```
+git show 64e07fd:clusters/local-kind/root-app.yaml | grep -c 'targetRevision: HEAD'
+for f in $(git ls-tree --name-only 64e07fd clusters/local-kind/apps/); do
+  git show "64e07fd:$f" | grep -c 'targetRevision: HEAD'
+done
+```
+
+which names root-app plus seven children: `10-istio-gateway`, `12-kyverno`,
+`15-keycloak`, `25-kuadrant`, `30-observability`, `90-model-local`, and
+`90-security`. Commit `07ad4f9` says "six child Applications" in its message.
+That is wrong, and it contradicts the "Eight lines" in its own first sentence.
+The number is seven. The message is left as it stands and corrected here,
+because the rule in this repository is to record a finding rather than edit the
+record until it agrees with itself.
+
+Nothing without a cluster could have caught this. The field was well formed and
+pointed somewhere real. It pointed at a different program.
+
+### 2. And then it reported success
+
+The last command of `task local:up` was
+
+```
+kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy \
+  applications.argoproj.io --all --timeout=30m
+```
+
+Against the cluster above, with zero child Applications and nothing deployed,
+it exited **0 in one second**.
+
+An Argo CD Application that never managed to compare anything reports
+`health.status: Healthy`. It has no resource to call unhealthy, so it calls
+itself healthy. `sync.status` is the field that tells the truth. Both probed
+against the same object at the same moment:
+
+| `--for=jsonpath=` | Result |
+|---|---|
+| `{.status.sync.status}=Synced` | `error: timed out waiting for the condition on applications/root-app` |
+| `{.status.health.status}=Healthy` | `application.argoproj.io/root-app condition met`, exit 0 |
+
+So acceptance criterion 1 was worse than unproven. The command written to
+settle it could not fail, in either direction, on an empty cluster.
+
+`clusters/local-kind/wait-for-sync.sh` replaces that line with four
+assertions: root-app is `Synced`; the number of Applications equals the number
+of `kind: Application` documents in `clusters/local-kind/apps/` plus one; every
+Application reaches `Synced` then `Healthy`; and three consecutive samples find
+every Application `Synced/Healthy` **at the same moment**.
+
+The last of those is not decoration. `kubectl wait --all` checks each object in
+turn and never rechecks one that already passed, so it can succeed on objects
+that were green at different times, and these Applications do flap OutOfSync
+while their neighbours sync. `--all` does fail on an empty set, probed the same
+day: zero matching objects gives `error: no matching resources found`, exit 1.
+It does not fail on a partial set, which is why the count is checked separately.
+
+### 3. Sync waves gave twelve seconds of ordering
+
+The waves ordered the children correctly. They ordered them two to three
+seconds apart. Creation timestamps from the run:
+
+| Wave | Created |
+|---|---|
+| 0 | 23:25:42Z |
+| 1 | 23:25:45Z |
+| 2 | 23:25:47Z |
+| 3 | 23:25:49Z |
+| 4 | 23:25:52Z |
+| 5 | 23:25:54Z |
+
+Six waves in twelve seconds, for a stack whose layers need minutes.
+
+The gate between waves is the child Application's own health, and a freshly
+created Application reports `Healthy` at once, for the reason in defect 2. So
+defect 2 is not one bug in one command. The same property also removed the
+ordering that this repository's whole delivery design rests on.
+
+### 4. A failed sync is never retried
+
+`model-local` failed at 23:31:05Z with
+
+```
+failed to discover server resources for group version serving.kserve.io/v1beta1:
+the server could not find the requested resource (retried 5 times)
+```
+
+Six minutes later it had still not tried again, and by then the CRDs it wanted
+existed: 5 KServe CRDs and 17 Kuadrant CRDs were present. `security-oidc`
+failed the same way on `AuthPolicy.kuadrant.io "" not found`.
+
+`selfHeal: true` does not cover this. Self-heal corrects drift. It does not
+re-run an operation that failed. No Application declared
+`syncPolicy.retry`, so Argo CD made five attempts inside one operation and
+stopped. All sixteen now declare a backoff.
+
+### 5. The 262144-byte annotation cap, which stopped five layers
+
+This is the defect that decided the run. It hit **five of the fifteen
+Applications**, not the two first recorded here. Counted by reading
+`.status.operationState.message` on all fifteen and matching the string:
+
+| Application | CRDs over the cap |
+|---|---|
+| `kserve` | `inferenceservices.serving.kserve.io` |
+| `kyverno` | `clusterpolicies.kyverno.io`, `policies.kyverno.io` |
+| `kuadrant` | `authpolicies.kuadrant.io` |
+| `observability` | `alertmanagers`, `alertmanagerconfigs`, `prometheusagents`, `prometheuses`, `scrapeconfigs`, `thanosrulers`, all `.monitoring.coreos.com` |
+| `keda` | `scaledjobs.keda.sh` |
+
+A sample message, verbatim:
+
+```
+CustomResourceDefinition "inferenceservices.serving.kserve.io" is invalid:
+metadata.annotations: Too long: may not be more than 262144 bytes (retried 5 times)
+```
+
+Argo CD applies client-side by default, which writes the entire manifest into
+the object's `kubectl.kubernetes.io/last-applied-configuration` annotation.
+Kubernetes caps annotations at 262144 bytes. The largest CRDs here exceed it.
+
+Both failures cascaded:
+
+- With `inferenceservices.serving.kserve.io` absent, `serving.kserve.io/v1beta1`
+  was not discoverable, so `90-model-local` synced none of its six resources.
+  **The stack had no InferenceService at all**, which is why no model was ever
+  loaded and why the memory figure above is so much lower than the imperative
+  run's.
+- With `clusterpolicies.kyverno.io` absent, all three ClusterPolicies failed
+  with `no matches for kind "ClusterPolicy" in version "kyverno.io/v1"`.
+  **This repository's own admission policies were never installed by the pull
+  path.** The guard that rejected KServe's floating-tag agent image on the
+  imperative run was simply not there.
+- With the Prometheus operator CRDs absent, the `Prometheus` object failed with
+  `no matches for kind "Prometheus" in version "monitoring.coreos.com/v1"`.
+  **There was no Prometheus**, so nothing in the observability layer could have
+  worked.
+- With `authpolicies.kuadrant.io` absent, `security-oidc` failed on
+  `AuthPolicy.kuadrant.io "" not found`. This correction matters: that failure
+  was first recorded here as pure wave ordering, curable by the backoff in
+  defect 4. It was not. The CRD never applied, and no amount of retrying would
+  have produced it.
+
+`helm install` does not write that annotation, so `platform/20-kserve/install.sh`
+and `platform/12-kyverno/install.sh` install the same charts with no complaint.
+This is the clearest case yet of the two-path divergence that `CLAUDE.md`
+warns about: one defect, visible from one path only.
+
+The fix is `ServerSideApply=true`, and it was already in this repository.
+`clusters/local-kind/apps/00-gateway-api-crds.yaml` carried that option before
+today. It was applied to one Application out of the six that turned out to need
+it. The option is now set on all sixteen, rather than on the five known
+victims: any chart can grow past the cap between one version pin and the next,
+and there is no reason for this stack to prefer client-side apply anywhere.
+
+### 6. istio-base synced successfully and stayed OutOfSync
+
+Its sync operation reported `successfully synced (all tasks run)`, and the
+Application still reported OutOfSync on one resource,
+`ValidatingWebhookConfiguration/istiod-default-validator`.
+
+The drift is by design, and the chart says so. Rendered from `istio/base`
+1.30.3 on 2026-08-20, the validator carries a comment saying istiod will update
+`failurePolicy` to `Fail` and patch in the `caBundle`, followed by
+`failurePolicy: Ignore` and no `caBundle` key. Read from the live object the
+same day: `failurePolicy: Fail`, and a populated `caBundle`.
+
+So git can never match the cluster here. Without an `ignoreDifferences` block
+the Application stays OutOfSync for the life of the cluster, and
+`wait-for-sync.sh` waits on every Application reaching Synced, so this one
+resource would hold `task local:up` until its timeout.
+
+### 7. A default value, declared, made an Application permanently OutOfSync
+
+`root-app` synced successfully and reported one resource OutOfSync forever:
+`Application/istio-gateway`.
+
+`clusters/local-kind/apps/10-istio-gateway.yaml` declared
+
+```yaml
+    directory:
+      recurse: false
+```
+
+and the live object's `spec.source.directory` came back empty. Argo CD drops
+`recurse: false`, because false is the default. So git carried a field the
+cluster would never report, and the comparison could not converge.
+
+The declaration is removed. The behaviour is unchanged, because false is what
+Argo CD does anyway; only the false drift is gone. `25-kuadrant.yaml` declares
+`recurse` too and does not drift, because it uses a multi-source `sources:`
+list rather than a single `source:`. That difference is not understood, and it
+is recorded here rather than explained.
 
 ## Safety notes
 

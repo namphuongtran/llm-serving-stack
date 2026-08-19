@@ -17,6 +17,19 @@ spec:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: base
     targetRevision: 1.30.3
+  # istiod patches failurePolicy to Fail and writes the caBundle after it
+  # starts, so git can never match the cluster here. The chart's own comment
+  # says so. Without this the Application stays OutOfSync for good.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: istiod-default-validator
+      jsonPointers:
+        - /webhooks/0/failurePolicy
+        - /webhooks/0/clientConfig/caBundle
   syncPolicy:
     automated: { prune: true, selfHeal: true }
-    syncOptions: [CreateNamespace=true]
+    retry:
+      limit: 20
+      backoff: { duration: 15s, factor: 2, maxDuration: 5m }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

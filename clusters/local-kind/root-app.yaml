@@ -13,27 +13,22 @@ spec:
   destination: { server: https://kubernetes.default.svc, namespace: argocd }
   source:
     repoURL: https://github.com/namphuongtran/llm-serving-stack
-    # NOT `HEAD`, which is what this said until 2026-08-20.
-    #
-    # Argo CD resolves `HEAD` to the remote's default branch. This remote's
-    # default branch is `main`, and on 2026-08-20 `git ls-tree --name-only
-    # origin/main` printed
-    #   OrderShare.sln
-    #   OrderShare
-    #   README.md
-    #   packages
-    # - an unrelated C# project. The stack lives only on the branch named
-    # below. So the pull path failed at its first act, with root-app reporting
-    #   ComparisonError - clusters/local-kind/apps: app path does not exist
-    # and creating none of its 15 children. See clusters/local-kind/wait-for-sync.sh
-    # for why `task local:up` then reported success anyway.
-    #
-    # Change this to HEAD when, and only when, `main` holds this stack. Until
-    # then HEAD points at a different program.
-    targetRevision: rebuild/llm-serving-stack
+    # `main`, not `HEAD`. HEAD resolves to the remote default branch, and until
+    # 2026-08-20 that branch held an unrelated project - see
+    # docs/deployment-walkthrough.md, "The pull-based path".
+    targetRevision: main
     path: clusters/local-kind/apps
     directory:
       recurse: false
   syncPolicy:
     automated: { prune: true, selfHeal: true }
-    syncOptions: [CreateNamespace=true]
+    # A failed sync is never retried without this, and sync waves gave only 12
+    # seconds of ordering. Both measured 2026-08-20, see the walkthrough.
+    retry:
+      limit: 20
+      backoff: { duration: 15s, factor: 2, maxDuration: 5m }
+    # ServerSideApply, set on every Application. Client-side apply writes the
+    # whole manifest into last-applied-configuration, and Kubernetes caps that
+    # annotation at 262144 bytes. On 2026-08-20 five of these fifteen charts
+    # exceeded it: kserve, kyverno, kuadrant, observability, keda.
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

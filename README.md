@@ -132,7 +132,7 @@ cluster, then record the result and the date here.
 
 | # | Criterion | Status | Settle it |
 |---|---|---|---|
-| 1 | `task local:up` takes an empty machine to a ready service | **not settled** | `task local:down && task local:up` |
+| 1 | `task local:up` takes an empty machine to a ready service | **fails 2026-08-20**, seven defects found and fixed, re-run owed | `task local:down && task local:up` |
 | 2 | A JWT obtained from Keycloak returns a streamed chat completion | **HOLDS 2026-08-19** | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
 | 3 | A request without a JWT is rejected with 401 | **HOLDS 2026-08-19** | `bats tests/smoke/06-auth-quota.bats` |
 | 4 | Exceeding the token quota returns 429 | untested | `bats tests/smoke/06-auth-quota.bats` |
@@ -142,11 +142,23 @@ cluster, then record the result and the date here.
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
 | 9 | CI is green on an arm64 runner | untested | push this branch, read `.github/workflows/ci.yml`'s result |
 
-Criterion 1 is the one to read carefully. The walkthrough brought every layer up
-through the imperative path, `platform/NN-*/install.sh`, not through
-`task local:up`. So the pull-based path that criterion names has still never run,
-and two things it depends on were only ever applied by hand: the CoreDNS manifest
-and the model overlay. Criterion 2 is met with one caveat recorded in
+Criterion 1 is the one to read carefully. It was run for the first time on
+2026-08-20, on a cluster created from empty, and it failed. Seven defects came
+out of that one run, and none of them was visible from the imperative path.
+`docs/deployment-walkthrough.md`, section "The pull-based path", is the account.
+Two of the seven are worth naming here:
+
+- The old final command of `task local:up` waited only on an Application's
+  health status, and an Application that failed to read its git path still
+  reports `Healthy`. It exited 0 in one second on a cluster where nothing had
+  been deployed. `clusters/local-kind/wait-for-sync.sh` replaces it.
+- Argo CD applies client-side by default, which writes each manifest into a
+  262144-byte annotation. Five of the fifteen charts here ship CRDs larger than
+  that, so KServe, Kyverno, Kuadrant, the observability stack, and KEDA all
+  failed. `helm install` never writes that annotation, which is why the
+  imperative path installs the same charts without complaint.
+
+All seven fixes are in. The re-run that would settle this criterion is owed. Criterion 2 is met with one caveat recorded in
 `docs/deployment-walkthrough.md`: `tests/contract/01-openai-api.bats` passes 4 of
 5, and the failing one is about this model being a reasoning model, not about the
 API contract.

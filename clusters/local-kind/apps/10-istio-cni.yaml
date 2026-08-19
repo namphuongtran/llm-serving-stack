@@ -18,4 +18,7 @@ spec:
         - { name: profile, value: ambient }
   syncPolicy:
     automated: { prune: true, selfHeal: true }
-    syncOptions: [CreateNamespace=true]
+    retry:
+      limit: 20
+      backoff: { duration: 15s, factor: 2, maxDuration: 5m }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

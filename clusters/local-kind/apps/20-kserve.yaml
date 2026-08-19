@@ -80,4 +80,7 @@ spec:
               tag: "v0.20.0@sha256:17db4be84440fc92e27dc3e7cac706514ff555ba6fd942424f4d219e2c58930e"
   syncPolicy:
     automated: { prune: true, selfHeal: true }
-    syncOptions: [CreateNamespace=true]
+    retry:
+      limit: 20
+      backoff: { duration: 15s, factor: 2, maxDuration: 5m }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

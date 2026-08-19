@@ -27,4 +27,7 @@ spec:
     path: config/crd/standard
   syncPolicy:
     automated: { prune: false, selfHeal: true }
+    retry:
+      limit: 20
+      backoff: { duration: 15s, factor: 2, maxDuration: 5m }
     syncOptions: [ServerSideApply=true]
