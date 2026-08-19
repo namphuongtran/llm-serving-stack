@@ -19,7 +19,10 @@ spec:
   targetRef:
     group: gateway.networking.k8s.io
     kind: HTTPRoute
-    name: ornith-9b
+    # See models/ornith-9b/overlays/local/httproute.yaml for why the route
+    # is named ornith-9b-openai and not ornith-9b: KServe generates its own
+    # HTTPRoute named llm/ornith-9b under enableGatewayApi: true.
+    name: ornith-9b-openai
   rules:
     authentication:
       keycloak:

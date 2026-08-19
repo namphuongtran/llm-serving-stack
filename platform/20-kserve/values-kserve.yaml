@@ -1,32 +1,91 @@
 # Standard mode. No Knative, no ModelMesh (its repository was archived
 # 2026-04-14). Gateway API on, because KServe defaults it to false.
 #
-# Keys verified 2026-08-19 against the real v0.20.0 chart (not the plan's
-# guess, checked independently):
-#   helm show values oci://ghcr.io/kserve/charts/kserve-resources --version v0.20.0
-#   helm template t oci://ghcr.io/kserve/charts/kserve-resources --version v0.20.0 -f <this file>
-# The second command was run against a copy of this file and confirmed the
-# rendered kserve/inferenceservice-config ConfigMap actually carries:
-#   .data.deploy  -> {"defaultDeploymentMode": "RawDeployment", ...}
-#   .data.ingress -> {"enableGatewayApi": true, "ingressClassName": "istio",
-#                      "ingressGateway": "istio-system/llm", ...}
-# which is what tests/smoke/04-kserve.bats asserts. All four keys below
-# (deploymentMode, enableGatewayApi, className, gateway) exist verbatim in
-# `kserve-resources`'s values schema at kserve.controller.* / .gateway.ingressGateway.* -
-# the plan's guessed key names were correct, so nothing was renamed.
+# The chart has TWO separate gateway keys under
+# kserve.controller.gateway.ingressGateway, and they are not interchangeable.
+# Read from the chart itself on 2026-08-19:
+#
+#   $ helm show values oci://ghcr.io/kserve/charts/kserve-resources --version v0.20.0
+#         ingressGateway:
+#           enableGatewayApi: false
+#           kserveGateway: kserve/kserve-ingress-gateway
+#           createGateway: false
+#           gateway: knative-serving/knative-ingress-gateway
+#           className: istio
+#
+#   `kserveGateway` -> rendered into the inferenceservice-config ConfigMap as
+#      .data.ingress.kserveIngressGateway. This is the key KServe reads when
+#      enableGatewayApi is true, and it is the parent the generated HTTPRoute
+#      attaches to.
+#   `gateway`       -> rendered as .data.ingress.ingressGateway. This is the
+#      legacy Istio/Knative ingress path, used when enableGatewayApi is false.
+#
+# An earlier version of this file set only `gateway`. That left
+# kserveIngressGateway at the chart default `kserve/kserve-ingress-gateway`,
+# a Gateway this repository never creates, so InferenceService IngressReady
+# could never become true. Both keys are now set to the Gateway this
+# repository does create (platform/10-istio/gateway.yaml: Gateway `llm` in
+# namespace `istio-system`).
+#
+# Proof the value lands, run 2026-08-19 against this exact file:
+#   helm template kserve oci://ghcr.io/kserve/charts/kserve-resources \
+#     --version v0.20.0 -f platform/20-kserve/values-kserve.yaml -n kserve \
+#     | yq eval-all 'select(.kind=="ConfigMap" and .metadata.name=="inferenceservice-config") | .data.ingress' -
+# prints, among others:
+#   "enableGatewayApi": true
+#   "kserveIngressGateway" : "istio-system/llm"
+#   "ingressGateway" : "istio-system/llm"
+#   "ingressClassName" : "istio"
+#   "disableIngressCreation": true
+# tests/smoke/04-kserve.bats asserts the values of the first, second, and
+# last against the live ConfigMap, so a silent regression to a chart default
+# fails a test instead of hanging a readiness wait for 900 seconds.
+#
+# createGateway is deliberately left at its default `false`: this repository
+# owns the Gateway object itself (platform/10-istio/gateway.yaml) and does
+# not want KServe creating a second one.
 #
 # This values file is passed only to the kserve-resources chart (see
 # install.sh) - it is the second of the two charts in versions.yaml's
 # kserve.charts install list (kserve-crd, then kserve-resources), and the
 # one that owns the controller and the inferenceservice-config ConfigMap.
-# It is not literally named "kserve"; the eight other charts published for
-# v0.20.0 (llmisvc, localmodel, the -minimal alternates, runtime-configs)
-# are recorded under kserve.charts_available and are not installed here.
 kserve:
   controller:
     deploymentMode: RawDeployment
     gateway:
+      # KServe generates its own HTTPRoutes for every InferenceService when
+      # Gateway API is on: one named `<isvc>-predictor` and one named
+      # `<isvc>`, both in the InferenceService's namespace
+      # (reconcilers/ingress/httproute_reconciler.go, tag v0.20.0, read
+      # 2026-08-19). This repository does not want them, for two reasons.
+      #
+      # 1. They would not work here. Their hostnames come from
+      #    GenerateDomainName -> domainTemplate + ingressDomain, which is
+      #    `ornith-9b-llm.example.com`. The only listener on the Gateway
+      #    (platform/10-istio/gateway.yaml) has `hostname:
+      #    llm.localtest.me`, so those routes would be rejected with
+      #    NoMatchingListenerHostname, isHTTPRouteReady (same file, line 682)
+      #    would see a False condition, and IngressReady would stay False
+      #    forever - the exact symptom that pointing kserveGateway at the
+      #    right Gateway was meant to remove.
+      # 2. Even if they attached, they would be a second, unauthenticated way
+      #    into the model. The Kuadrant AuthPolicy and TokenRateLimitPolicy
+      #    (security/oidc/) target this repository's own HTTPRoute by name;
+      #    a KServe-generated route on another hostname would carry neither,
+      #    and would not carry the 600s streaming timeouts either.
+      #
+      # With this true, KServe creates no HTTPRoute and marks IngressReady
+      # true directly (httproute_reconciler.go:1065, "Ingress creation is
+      # disabled. We set it to true as the isvc condition depends on it.").
+      # The route that actually serves traffic is
+      # models/ornith-9b/overlays/*/httproute.yaml.
+      disableIngressCreation: true
       ingressGateway:
         enableGatewayApi: true
         className: istio
+        # The key KServe reads under enableGatewayApi: true.
+        kserveGateway: istio-system/llm
+        # The legacy Istio ingress key. Set to the same Gateway so the two
+        # cannot disagree, and so the ConfigMap never carries a
+        # knative-serving reference in a cluster that has no Knative.
         gateway: istio-system/llm

@@ -45,9 +45,26 @@ spec:
             controller:
               deploymentMode: RawDeployment
               gateway:
+                # See platform/20-kserve/values-kserve.yaml for why this is
+                # true: KServe's generated HTTPRoutes use a hostname the
+                # single Gateway listener does not match, and they would
+                # carry neither the Kuadrant policies nor the streaming
+                # timeouts. With ingress creation disabled KServe marks
+                # IngressReady true directly and this repository's own
+                # HTTPRoute is the only route to the model.
+                disableIngressCreation: true
                 ingressGateway:
                   enableGatewayApi: true
                   className: istio
+                  # kserveGateway and gateway are two different chart keys.
+                  # kserveGateway becomes .data.ingress.kserveIngressGateway
+                  # in the inferenceservice-config ConfigMap and is the one
+                  # KServe reads under enableGatewayApi: true; `gateway`
+                  # becomes .data.ingress.ingressGateway (the legacy Istio
+                  # path). Both are set, to the same Gateway this repository
+                  # creates, so the GitOps path and
+                  # platform/20-kserve/values-kserve.yaml cannot drift.
+                  kserveGateway: istio-system/llm
                   gateway: istio-system/llm
   syncPolicy:
     automated: { prune: true, selfHeal: true }

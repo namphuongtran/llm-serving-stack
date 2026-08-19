@@ -1,7 +1,17 @@
+# Named ornith-9b-openai, NOT ornith-9b, on purpose. With
+# enableGatewayApi: true (platform/20-kserve/values-kserve.yaml), KServe's
+# own ingress reconciler generates an HTTPRoute named after the
+# InferenceService, in the InferenceService's namespace - literally
+# llm/ornith-9b. A hand-written route under that same name would be the same
+# object: KServe's controller and Argo CD (syncPolicy.automated.selfHeal:
+# true on clusters/local-kind/apps/90-model-local.yaml) would overwrite each
+# other on every reconcile, forever. The suffix keeps this route, which
+# carries the streaming timeouts and is the Kuadrant policy target, separate
+# from whatever KServe generates.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: ornith-9b
+  name: ornith-9b-openai
   namespace: llm
 spec:
   parentRefs: [{ name: llm, namespace: istio-system }]

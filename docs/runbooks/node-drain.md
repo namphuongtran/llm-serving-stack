@@ -104,7 +104,8 @@ because the gateway never routes to `fallback-small` (next section).
 
 ADR 0007 (`docs/adr/0007-failover-not-expressible-in-gateway-api.md`)
 withdrew the mechanism this runbook used to describe here: a `weight: 0`
-`backendRef` on the `ornith-9b` `HTTPRoute`, reached through Envoy retries.
+`backendRef` on the model's `HTTPRoute` (named `ornith-9b` then, renamed
+`ornith-9b-openai` on 2026-08-19), reached through Envoy retries.
 It cannot work. Envoy selects among an `HTTPRoute`'s weighted backends once,
 at initial route match; a retry is attempted against a different host
 **inside the already-selected cluster**, never against a different backend

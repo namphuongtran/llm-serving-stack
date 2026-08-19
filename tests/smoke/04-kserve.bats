@@ -28,6 +28,39 @@ setup() { load '../lib/helpers'; }
   [ "$output" = "true" ]
 }
 
+# Asserts the VALUE, not that the key exists. With enableGatewayApi: true,
+# kserveIngressGateway is the key KServe reads to decide which Gateway its
+# generated HTTPRoute attaches to, and it is a separate chart key from
+# `gateway`/ingressGateway. Setting only the latter leaves this one at the
+# chart default kserve/kserve-ingress-gateway - a Gateway this repository
+# never creates - and the failure is silent: helm renders fine, the install
+# succeeds, and the only symptom is InferenceService IngressReady that never
+# turns true, which tests/contract/02-readiness.bats then waits 900s for.
+@test "kserveIngressGateway points at the Gateway this repository creates" {
+  run bash -c "kubectl --context $KUBECTL_CONTEXT get cm -n kserve inferenceservice-config -o jsonpath='{.data.ingress}' | jq -r .kserveIngressGateway"
+  [ "$status" -eq 0 ]
+  [ "$output" = "istio-system/llm" ]
+}
+
+# KServe must not generate its own HTTPRoutes. Theirs carry the hostname
+# `<isvc>-<ns>.<ingressDomain>`, which the single listener on
+# platform/10-istio/gateway.yaml does not match, and they would carry neither
+# the Kuadrant policies nor the 600s streaming timeouts. With this true KServe
+# marks IngressReady true directly, and the route in
+# models/ornith-9b/overlays/local/httproute.yaml is the only one.
+@test "KServe does not generate its own ingress routes" {
+  run bash -c "kubectl --context $KUBECTL_CONTEXT get cm -n kserve inferenceservice-config -o jsonpath='{.data.ingress}' | jq -r .disableIngressCreation"
+  [ "$status" -eq 0 ]
+  [ "$output" = "true" ]
+}
+
+@test "no KServe-generated HTTPRoute exists for the model" {
+  run bash -c "kubectl --context $KUBECTL_CONTEXT -n llm get httproute ornith-9b"
+  [ "$status" -ne 0 ]
+  run bash -c "kubectl --context $KUBECTL_CONTEXT -n llm get httproute ornith-9b-predictor"
+  [ "$status" -ne 0 ]
+}
+
 @test "the admission webhook rejects an invalid InferenceService" {
   run k apply -f - <<'YAML'
 apiVersion: serving.kserve.io/v1beta1
