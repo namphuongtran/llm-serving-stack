@@ -48,9 +48,17 @@ never in the request path.
 
 ## Cost accepted
 
-Two more components to run and upgrade, Authorino and Limitador, plus a Redis for
-distributed counters. On a 32 GB laptop this is a real cost, tracked as risk R4
-in the design spec.
+Two more components to run and upgrade, Authorino and Limitador. On a 32 GB
+laptop this is a real cost, tracked as risk R4 in the design spec.
+
+Correction, 2026-08-19: this section also named "a Redis for distributed
+counters" as an accepted cost. Phase 1 deploys no Redis. `platform/25-kuadrant/`
+installs the Kuadrant operator and applies a `Kuadrant` CR with `spec: {}`,
+which leaves Limitador on its own default storage; nothing in this repository
+configures or installs Redis. The design spec's section 13 carried the same
+error in its wave 1 row and has been corrected there too. Distributed counters
+across replicas would need that datastore, and that is a phase 2 question, not
+a cost already being paid.
 
 ## Evidence
 

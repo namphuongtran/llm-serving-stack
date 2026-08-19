@@ -1,5 +1,5 @@
-# Scale-to-zero is not the default posture (see ../local/scaledobject.yaml's
-# minReplicaCount: 1 comment). This overlay is the opt-in alternative for
+# Scale-to-zero is not the default posture (see ../local/scaledobject.yaml, whose
+# minReplicaCount is 2, and its comment on why). This overlay is the opt-in alternative for
 # whoever decides the cold start it introduces is worth the idle-cost saving,
 # with that cold start recorded as a real, dated number in docs/02-why-kserve.md
 # rather than left as an opinion - see the Unmeasured marker there for the

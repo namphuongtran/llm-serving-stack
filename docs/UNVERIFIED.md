@@ -50,8 +50,9 @@ reference documentation, not by running a cluster:
 
 ADR 0007's decision has landed in code, not only in the ADR:
 `models/ornith-9b/overlays/local/retry-policy.yaml` is deleted, the
-`ornith-9b` `HTTPRoute` carries only the primary backend (no `weight`, no
-second `backendRef`), and `tests/smoke/08-availability.bats`'s "the endpoint
+`ornith-9b-openai` `HTTPRoute` (renamed from `ornith-9b` on 2026-08-19, so it
+cannot collide with the one KServe generates under that name) carries only the
+primary backend (no `weight`, no second `backendRef`), and `tests/smoke/08-availability.bats`'s "the endpoint
 still answers when the primary has no replicas" test is `skip`ped with ADR
 0007 named as the reason - not deleted, not left failing. The
 `fallback-small` `InferenceService` is kept (it is independently useful, and
@@ -95,7 +96,7 @@ the result and the date in `README.md`.
 | 3 | A request without a JWT is rejected with 401 | `bats tests/smoke/06-auth-quota.bats` |
 | 4 | Exceeding the token quota returns 429 | `bats tests/smoke/06-auth-quota.bats` |
 | 5 | Grafana shows TTFT p95 and requests waiting from real traffic | `bats tests/smoke/05-observability.bats` |
-| 6 | Under load, KEDA scales the predictor from 1 to 2 replicas, with evidence | `bats tests/smoke/07-autoscaling.bats` |
+| 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, PDB holding | `bats tests/smoke/08-availability.bats` |
 | 8 | The recovery drill runs and its recovery time is committed | `task drill:recovery` |
 | 9 | CI is green on an arm64 runner | push this branch, read `.github/workflows/ci.yml`'s result |
@@ -103,8 +104,9 @@ the result and the date in `README.md`.
 ## Unproven: every dated measurement still owed
 
 Every dated `> **Unmeasured` marker elsewhere in this repository, reconciled
-by `grep -rn "Unmeasured (" . | grep -v docs/UNVERIFIED.md | wc -l` (14,
-2026-08-19; this document's own references to that marker text in prose are
+by `grep -rn "Unmeasured (" . | grep -v docs/UNVERIFIED.md | wc -l`, which
+printed **14** when it was last run, on 2026-08-19, matching the 14 rows below
+(the same 14 file:line pairs; this document's own references to that marker text in prose are
 excluded from the count on purpose - otherwise this table would inflate the
 number every time it mentions the pattern it is counting). Each row below
 names the file it lives in and the command that would settle it; most share
@@ -126,17 +128,41 @@ every row.
 | `docs/07-why-gitops.md:78` | Wall-clock time of a full `task local:down && task local:up` rebuild, proving reproducibility (Task 12 step 6) | `task local:down && task local:up && bats tests/` |
 | `docs/08-why-llm-d.md:26` | Throughput/TTFT difference between the shared-prefix and short-prompt scenarios, single replica | `task bench` (scenarios `03-shared-prefix.json`, `01-short.json`) |
 | `docs/adr/0006-metric-normalisation.md:120` | Whether the `llamacpp:*` metric names are actually present, unrenamed, on a live `/metrics` endpoint | `kubectl -n llm exec <predictor pod> -c kserve-container -- wget -qO- http://127.0.0.1:8080/metrics \| grep -E '^# (HELP\|TYPE)' \| sort` |
-| `docs/runbooks/node-drain.md:70` | Memory footprint of two `ornith-9b-predictor` replicas resident together | `kubectl -n llm top pod -l serving.kserve.io/inferenceservice=ornith-9b` |
-| `docs/runbooks/recovery-drill.md:19` | The recovery drill's own time-to-first-token number | `task drill:recovery` (runs `bench/recovery-drill.sh`) |
+| `docs/runbooks/node-drain.md:75` | Memory footprint of two `ornith-9b-predictor` replicas resident together | `kubectl -n llm top pod -l serving.kserve.io/inferenceservice=ornith-9b` |
+| `docs/runbooks/recovery-drill.md:31` | The recovery drill's own time-to-first-token number. The script measures the arrival of the first streamed `data:` chunk (fixed 2026-08-19; it previously timed a `GET /v1/models` poll and recorded it under that name) | `task drill:recovery` (runs `bench/recovery-drill.sh`) |
 
-## What is proven
+## What is proven, and the sharp limit on it
 
-Nothing that requires a cluster. What holds without one: every `helm install
---dry-run=client` this repository's install scripts and Argo CD Applications
-were checked against succeeds; every `kustomize build` across every overlay
-succeeds; every CRD field this repository's manifests use was confirmed
-against the pinned chart's own rendered schema, not memory; the real
-`kyverno` CLI confirms the three admission policies reject exactly what
-`tests/smoke/11-policy.bats` asserts they reject (`policy/tests/`); every
-shell script parses under bash 3.2.57; `actionlint` reports the CI workflow
-clean. None of this is a substitute for the table above.
+Nothing that requires a cluster. What holds without one:
+
+- Every `helm install --dry-run=client` and `helm template` this repository's
+  install scripts and Argo CD Applications were checked against **renders
+  without error**.
+- Every `kustomize build` across every overlay renders without error.
+- Every CRD field this repository's manifests use was confirmed against the
+  pinned chart's own rendered schema, not memory.
+- The real `kyverno` CLI confirms the three admission policies reject exactly
+  what `tests/smoke/11-policy.bats` asserts they reject (`policy/tests/`), and
+  the fixtures there were mutation-checked: reverting the policy under test
+  makes the corresponding case fail.
+- Every shell script parses under bash 3.2.57 (`/bin/bash -n`, the version
+  macOS ships, which `shellcheck` alone does not stand in for).
+- `actionlint` reports the CI workflow clean.
+
+**A passing dry-run does not prove the rendered values are the intended ones.**
+It proves the chart rendered. This is not a hypothetical distinction; it is how
+two defects survived several rounds of review on this branch, both found only
+on 2026-08-19 by reading rendered output instead of source:
+
+- `platform/20-kserve/values-kserve.yaml` set the chart's `gateway` key while
+  KServe reads `kserveGateway`. Every dry-run passed. The rendered ConfigMap
+  carried `kserveIngressGateway: kserve/kserve-ingress-gateway`, a Gateway this
+  repository never creates.
+- `clusters/local-kind/apps/30-observability.yaml` let Argo CD default the Helm
+  release name to the Application name. Every dry-run passed. The rendered
+  Service was `observability-kube-prometh-prometheus`, not the
+  `kube-prometheus-stack-prometheus` four consumers in this repository name.
+
+The rule that follows: a values change is checked by rendering the chart and
+reading the value out of the output, not by reading the values file back. None
+of this is a substitute for the table above.

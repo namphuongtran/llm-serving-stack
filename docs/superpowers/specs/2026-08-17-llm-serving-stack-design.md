@@ -76,7 +76,7 @@ the gateway replaceable.
   │ Engine          local:  llama.cpp server (arm64)    │
   │                 cloud:  vLLM                        │
   ├────────────────────────────────────────────────────┤
-  │ Scale           KEDA + OpenTelemetry add-on         │
+  │ Scale           KEDA, Prometheus scaler             │
   │ Telemetry       Prometheus, Grafana, OTel Collector │
   │ Delivery        GitHub Actions (CI), Argo CD (CD)   │
   └────────────────────────────────────────────────────┘
@@ -87,7 +87,7 @@ Request path, phase 1:
 ```
 client → Istio gateway (gatewayClassName: istio)
        → Kuadrant AuthPolicy         (JWT verified against Keycloak JWKS)
-       → Kuadrant TokenRateLimitPolicy (counters in Limitador/Redis)
+       → Kuadrant TokenRateLimitPolicy (counters in Limitador)
        → HTTPRoute → InferenceService predictor Service
        → llama.cpp server, OpenAI-compatible, streaming
 ```
@@ -194,9 +194,21 @@ reproduced.
 
 ## 10. Autoscaling
 
-- KEDA scales on queue depth, using the OpenTelemetry add-on, not on CPU. GPU
-  can be saturated while CPU looks idle.
-- The default overlay sets `minReplicas: 1`. Scale to zero is not the default,
+- KEDA scales on queue depth, not on CPU. GPU can be saturated while CPU looks
+  idle.
+- The trigger is KEDA's **Prometheus scaler**, reading the normalised
+  `llmstack:requests_waiting` recording rule
+  (`models/ornith-9b/overlays/local/scaledobject.yaml`,
+  `platform/30-observability/recording-rules.yaml`). This replaces the
+  "OpenTelemetry add-on" this section named before implementation: the metric
+  this stack scales on is a Prometheus series, and reaching it through a
+  second, OTel-specific scaler would add a component without adding a signal.
+  Named engine metrics never appear in the `ScaledObject`, so the same object
+  works against vLLM in phase 2.
+- The **local** overlay sets `minReplicas: 2`, not 1. It was raised for high
+  availability: the PodDisruptionBudget has `minAvailable: 1`, and an
+  autoscaler must never be free to scale below the floor that budget can
+  protect. `maxReplicaCount` is 3. Scale to zero is not the default either,
   because cold start on a large model is minutes.
 - A separate `cost-saving` overlay demonstrates scale to zero, and its cold
   start cost is measured and committed like any other number.
@@ -218,9 +230,19 @@ the real recovery time objective and it is committed to `bench/results/`.
 
 ## 12. Benchmark method
 
-Tool: vLLM's `benchmark_serving` in its OpenAI-chat mode. It only needs an
-OpenAI-compatible endpoint, so the same tool measures llama.cpp locally and vLLM
-in the cloud. That is what makes phase comparisons fair.
+Tool: `bench/harness.py`, written in this repository. It speaks only the
+OpenAI streaming chat API over `urllib` from the Python standard library, so
+the same harness measures llama.cpp locally and vLLM in the cloud. That is what
+makes phase comparisons fair.
+
+This replaces the plan's original choice of vLLM's `benchmark_serving`, which
+was written before the engine decision landed: taking it would have made the
+benchmark depend on installing vLLM, the one thing this phase established
+cannot be installed on the local machine (section 4). The harness measures
+time to first token and inter-token gaps from the arrival times of the
+stream's own `data:` chunks, and reads token counts from the
+`stream_options: {include_usage: true}` final chunk, so no number depends on
+an engine-specific metric name.
 
 Scenarios:
 
@@ -259,10 +281,22 @@ laptop at all. Sync waves replace manual ordering:
 | Wave | Contents |
 |---|---|
 | 0 | Gateway API CRDs, cert-manager |
-| 1 | Istio, Keycloak, Redis |
+| 1 | Istio, Keycloak, Kyverno |
 | 2 | KServe, Kuadrant |
 | 3 | Prometheus, Grafana, OTel Collector, KEDA |
-| 4 | ServingRuntime, InferenceService, AuthPolicy, TokenRateLimitPolicy, HTTPRoute |
+| 4 | ServingRuntime, InferenceService, HTTPRoute |
+| 5 | AuthPolicy, TokenRateLimitPolicy |
+
+Two corrections against what shipped. Wave 1 named **Redis**: no Redis is
+installed anywhere in this repository. Kuadrant's Limitador holds the token
+counters in its own default storage, and adding Redis would be a datastore on
+the request path that section 9 exists to avoid. Wave 1 installs Kyverno
+instead (`clusters/local-kind/apps/12-kyverno.yaml`), which this table did not
+mention at all.
+
+The policies moved from wave 4 to **wave 5** because they target the
+`HTTPRoute` the model overlay creates, and Argo CD syncs everything within one
+wave concurrently. "Alongside" was never "after".
 
 All images are pinned by digest.
 
@@ -322,7 +356,10 @@ Phase 1 is complete when all of the following hold:
 3. A request without a JWT is rejected with 401.
 4. Exceeding the token quota returns 429.
 5. Grafana shows TTFT p95 and requests waiting from real traffic.
-6. Under load, KEDA scales the predictor from 1 to 2 replicas, with evidence.
+6. Under load, KEDA scales the predictor above its floor of 2 replicas, to 3,
+   with evidence. (Originally written as "from 1 to 2". The floor became 2 when
+   `minReplicas`/`minReplicaCount` were raised for high availability, which made
+   the original criterion true at rest, before any load.)
 7. Draining a node keeps the service available, with the PodDisruptionBudget
    holding.
 8. The recovery drill runs and its recovery time is committed.
@@ -346,6 +383,16 @@ Phase 1 is complete when all of the following hold:
 Facts verified at their source. Anything not on this list is treated as
 unverified until it is.
 
+The 2026-08-17 rows are the design-time research. The 2026-08-19 rows are what
+implementation and review actually read at the source: upstream Go code at the
+pinned tag, rendered chart output, and command output on the authoring machine.
+Both sets live here because the rule above is absolute - a finding that shaped
+this repository and is not in this table is, by this section's own standard,
+unverified.
+
+No row in this table was produced by a running Kubernetes cluster. None exists;
+see `docs/UNVERIFIED.md`.
+
 | Date | Fact | Source |
 |---|---|---|
 | 2026-08-17 | `kserve/huggingfaceserver:latest` and `:v0.20.0` publish `linux/amd64` only | Docker Hub registry manifest query |
@@ -363,6 +410,21 @@ unverified until it is.
 | 2026-08-17 | Ornith-1.0-9B is MIT licensed, about 19 GB in bf16, 262144 token context, with quantised builds for llama.cpp and Ollama | Hugging Face model card |
 | 2026-08-17 | Rosetta 2 does not implement AVX, AVX2, or AVX512 | docker/for-mac issue 7137, Apple developer forums |
 | 2026-08-17 | GitHub arm64 hosted runners are generally available, including private repositories since 2026-01-29 | GitHub changelog |
+| 2026-08-19 | Envoy selects among weighted clusters once, at initial route match; a retry is attempted against a different host inside the already selected cluster, never a different cluster. So a `weight: 0` backend is never reached | Envoy issue 5891, closed without the behaviour changing. Recorded in ADR 0007 |
+| 2026-08-19 | Istio resolves a policy's `spec.gateways` against its own `networking.istio.io` `Gateway` kind, not the Gateway API `gateway.networking.k8s.io` kind, so the withdrawn retry policy most likely never attached | Istio reference documentation. Recorded in ADR 0007 |
+| 2026-08-19 | llama.cpp's server exposes `llamacpp:requests_processing`, `llamacpp:requests_deferred`, and `llamacpp:tokens_predicted_total`, and no latency histogram of any kind | `tools/server/README.md` at commit `25ae3a9b331fffea50ff8d07a5cad34c33f1276f`, the commit the pinned image was built from. Recorded in ADR 0006 |
+| 2026-08-19 | llama.cpp's server documentation contains no mention of OTLP or OpenTelemetry, so the engine contract's traces item cannot be met in phase 1 | Same document. Recorded in ADR 0005 and `docs/UNVERIFIED.md` |
+| 2026-08-19 | KServe's helm chart split at v0.17; ten charts are published at v0.20.0, of which Standard mode installs exactly two (`kserve-crd`, then `kserve-resources`) | `curl https://api.github.com/repos/kserve/kserve/contents/charts?ref=v0.20.0`, then `helm show chart` on each; KServe's own Kubernetes-deployment install guide |
+| 2026-08-19 | KServe v0.20.0 is built against Gateway API v1.5.1 (not the newer v1.6.1) | `curl https://raw.githubusercontent.com/kserve/kserve/v0.20.0/go.mod \| grep gateway-api` -> `sigs.k8s.io/gateway-api v1.5.1`; KServe v0.20.0 release notes, "deps: bump Gateway API to v1.5.1" (#5478) |
+| 2026-08-19 | The `kserve-resources` chart has two distinct gateway keys: `kserveGateway` renders as `.data.ingress.kserveIngressGateway` and is the one KServe reads when `enableGatewayApi` is true; `gateway` renders as `.data.ingress.ingressGateway`. Setting only the second leaves the first at the chart default `kserve/kserve-ingress-gateway` | `helm show values` and `helm template` on `oci://ghcr.io/kserve/charts/kserve-resources` v0.20.0, output read directly. Asserted by `tests/smoke/04-kserve.bats` |
+| 2026-08-19 | KServe's storage-initializer guard is `sourceURI != nil`, not `!= ""`. `storageUri: ""` is a non-nil pointer and still triggers injection | `pkg/controller/v1beta1/inferenceservice/components/predictor.go:116` and `:294` at tag v0.20.0 |
+| 2026-08-19 | KServe's default autoscaler class is HPA, and `shouldCreateHPA` creates an HPA unless the `serving.kserve.io/autoscalerClass` annotation is absent or `hpa`. `external` suppresses creation and deletes an HPA KServe previously created | `pkg/constants/constants.go:245`, `reconcilers/hpa/hpa_reconciler.go:247` and `:250`, `reconcilers/autoscaler/autoscaler_reconciler.go:93` at tag v0.20.0 |
+| 2026-08-19 | `ServingRuntime.spec.protocolVersions` enumerates KServe's own inference protocol ("v1 or v2 or grpc-v1 or grpc-v2"), and an empty list means "any" | `pkg/apis/serving/v1alpha1/servingruntime_types.go:140` and `:304` at tag v0.20.0 |
+| 2026-08-19 | Argo CD defaults a Helm source's release name to the Application name, which renames every object the chart derives from `.Release.Name` and every `release:` selector label | `helm template` of kube-prometheus-stack 88.5.0 under both release names, output compared directly |
+| 2026-08-19 | kind v0.32.0's default node image is `kindest/node:v1.36.1@sha256:3489c767...`, and that digest resolves to a manifest list containing linux/arm64 | kind v0.32.0 release notes; `docker buildx imagetools inspect` on the digest |
+| 2026-08-19 | Kyverno CLI v1.18.2 loads 0 policy rules when given the `policy/` directory (which also holds `README.md` and `tests/`) and 7 when given `policy/*.yaml` | Both commands run on this machine against the same input |
+| 2026-08-19 | jq 1.7.1's `@base64d` rejects the base64url alphabet, and `base64 -d` silently truncates an unpadded payload | Both run on this machine against a synthetic unpadded base64url JWT payload |
+| 2026-08-19 | All seven Helm repositories the `platform/*/install.sh` scripts name by alias resolve (HTTP 200 on `<url>/index.yaml`) | `curl -sIL` against each of the seven URLs in `Taskfile.yml`'s `helm:repos` task |
 
 Numbers quoted from vendor blogs and not independently verified, kept separate
 on purpose: the reported 3x output tokens per second and 2x lower time to first

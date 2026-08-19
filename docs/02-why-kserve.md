@@ -40,7 +40,7 @@ assumed.
 > start=$SECONDS
 > curl -sf http://llm.localtest.me/v1/models -H "authorization: Bearer $TOKEN" >/dev/null
 > echo "cold start from zero: $((SECONDS - start))s"
-> kustomize build models/ornith-9b/overlays/local | kubectl apply -f -   # restore minReplicaCount: 1
+> kustomize build models/ornith-9b/overlays/local | kubectl apply -f -   # restore minReplicaCount: 2
 > ```
 
 ## What breaks if this layer is removed

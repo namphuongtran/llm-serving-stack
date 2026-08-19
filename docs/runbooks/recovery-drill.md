@@ -9,10 +9,22 @@ task drill:recovery
 ```
 
 Deletes the `llm` namespace, waits for every Argo CD Application to report
-`Healthy` again, then polls `/v1/models` through the gateway until it answers.
-The elapsed time is written to
-`bench/results/<date>-recovery/result.json` (`seconds_to_first_token`) and
-`summary.md`.
+`Healthy` again, polls `GET /v1/models` through the gateway as a readiness
+gate, then issues one streaming `POST /v1/chat/completions` and times the
+arrival of its first `data:` chunk.
+
+Two numbers are written to `bench/results/<date>-recovery/result.json`, plus
+`summary.md`:
+
+| Field | What it is |
+|---|---|
+| `seconds_to_first_token` | Namespace delete to the first streamed `data:` chunk. This is the recovery time objective |
+| `seconds_to_models_endpoint` | Namespace delete to the first successful `GET /v1/models`. The readiness gate, kept because it is useful, but it is not a token |
+
+Corrected 2026-08-19. The script used to record the `/v1/models` poll time
+under the name `seconds_to_first_token`, which measured no token at all:
+`/v1/models` answers as soon as the server is listening, before any weight has
+been through a forward pass. The name and the measurement now agree.
 
 ## The measured number
 
