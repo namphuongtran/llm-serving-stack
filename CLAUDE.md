@@ -8,14 +8,14 @@ A Kubernetes LLM inference platform, built layer by layer, on `kind` locally and
 on GPU nodes later. It is infrastructure only: YAML, shell, and a small Python
 benchmark harness. It builds no container image of its own.
 
-Read `README.md` and `docs/UNVERIFIED.md` first. `docs/UNVERIFIED.md` carries
-the nine phase 1 acceptance criteria in full, with the command that settles
-each one.
+Read `README.md` first. Its "What is unproven" and "What is proven" sections
+carry the nine phase 1 acceptance criteria in full, with the command that
+settles each one, and the sharp limit on what has actually been checked.
 
 `docs/superpowers/` holds the design spec and the build plan. **It is a local
 working document and is not in git** (`.gitignore`), so a clone does not get
 it. Where it is cited below, the citation is marked. Anything in it that has to
-survive belongs in an ADR (`docs/adr/`), in `docs/UNVERIFIED.md`, or in a code
+survive belongs in an ADR (`docs/adr/`), in `README.md`, or in a code
 comment.
 
 ## Current state, and why it matters for every claim you write
@@ -24,9 +24,13 @@ The repository is **code-complete and unrun** (as of 2026-08-19). No manifest,
 script, or test has been observed against a live cluster. The build machine
 cannot spare the memory Docker needs for `kind`.
 
-`docs/UNVERIFIED.md` is the reconciled account of what is unproven. Update it
+`README.md`'s "What is unproven" section is the tracked account. Update it
 whenever you change what is or is not verified. Do not write that something
 works because it renders. See "Evidence rules" below.
+
+`docs/UNVERIFIED.md` is a longer working account of the same thing. It is a
+local working document and is not in git (`.gitignore`), so do not cite it
+from a tracked file, and do not put a fact there that has no tracked home.
 
 ## Commands
 
@@ -145,9 +149,21 @@ This repository is stricter than the default. The rules are stated in
 - **A number without the date it was measured is invalid.** Re-measure. Do not
   quote a number forward.
 - **A passing dry-run does not prove the rendered values are the intended
-  ones.** It proves the chart rendered. Two real defects survived several
-  review rounds this way, both recorded in `docs/UNVERIFIED.md`. Check a values
-  change by rendering the chart and reading the value out of the output.
+  ones.** It proves the chart rendered. Check a values change by rendering the
+  chart and reading the value out of the output, not by reading the values
+  file back.
+
+  This is not hypothetical. Two real defects survived several review rounds on
+  this branch, and both were found on 2026-08-19 only by reading rendered
+  output instead of source:
+
+  - `platform/20-kserve/values-kserve.yaml` set the chart's `gateway` key
+    while KServe reads `kserveGateway`. Every dry-run passed. The rendered
+    ConfigMap carried a Gateway this repository never creates.
+  - `clusters/local-kind/apps/30-observability.yaml` let Argo CD default the
+    Helm release name to the Application name. Every dry-run passed. The
+    rendered Service was `observability-kube-prometh-prometheus`, not the
+    `kube-prometheus-stack-prometheus` that four consumers here name.
 - **Never edit a document to make a checker pass.** Fix the checker, or record
   the finding as real.
 - Mark anything not yet observed with `> **Unmeasured (<date>):**` or
@@ -165,9 +181,10 @@ the workflow itself. Read those comments before you add a step.
 **CI is where this repository proves things.** The development machine cannot
 spare the memory, so every suite that runs at all runs here. Six of thirteen
 smoke suites ran nowhere before 2026-08-19; three of them run now. The CI
-coverage section of `docs/UNVERIFIED.md` is the tracked account. The design
-behind it, `docs/superpowers/specs/2026-08-19-ci-coverage-design.md`, is a
-local working document and is not in git.
+workflow's own comments are the tracked account, including two `Untried`
+records. The design behind it,
+`docs/superpowers/specs/2026-08-19-ci-coverage-design.md`, is a local working
+document and is not in git.
 
 The `Record the runner size` step in each cluster job prints `nproc`,
 `free -h`, and `df -h`. Quote those, dated by the run, rather than repeating

@@ -154,6 +154,13 @@ jobs:
           # platform/12-kyverno/install.sh was written on 2026-08-19 there was
           # no imperative installer for it at all, so tests/smoke/11-policy.bats
           # ran nowhere.
+          #
+          # Untried (2026-08-19): whether the CI model overlay survives live
+          # admission. Every check on policy/ so far has been `kyverno test
+          # policy/tests` against synthetic fixtures, which is a different
+          # claim. If the overlay violates one of the three rules, this job
+          # goes red at the Deploy the CI model step below, and that red is a
+          # real finding rather than a CI problem to route around.
           ./platform/12-kyverno/install.sh
           ./platform/15-keycloak/install.sh
           ./platform/20-kserve/install.sh
@@ -185,6 +192,13 @@ jobs:
   #
   # Added 2026-08-19. Before that, tests/smoke/05-observability.bats ran
   # nowhere, because no job installed Prometheus.
+  #
+  # Untried (2026-08-19): whether this job fits the runner at all. The
+  # exclusion note at the bottom of this file records that kube-prometheus-stack
+  # plus KEDA plus TWO replicas of the 0.5B CI model did not fit. This job has
+  # one replica and no KEDA, which is why it is worth trying. If it does not
+  # fit, the failure is the measurement: record it and the Record the runner
+  # size step's numbers, rather than trimming the suite until it passes.
   observability:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45

@@ -12,14 +12,23 @@ pinned charts themselves, `bash -n` under bash 3.2.57, `bats --count`,
 working against a live Kubernetes cluster: the machine building it cannot
 spare the memory Docker needs to run `kind` alongside the rest of this stack.
 
-**None of the nine phase 1 acceptance criteria (design spec, section 15) hold
-as of 2026-08-19, because none has been executed.** This is not nine
-different failures; it is one fact (no cluster has run) with nine
-consequences. See [`docs/UNVERIFIED.md`](docs/UNVERIFIED.md) for the full,
-reconciled account of what is unproven, what is unverified by construction,
-and the one place this repository has a specific technical reason to doubt a
-mechanism rather than merely lack a measurement of it (cross-backend
-failover, `docs/adr/0007-failover-not-expressible-in-gateway-api.md`).
+**None of the nine phase 1 acceptance criteria hold as of 2026-08-19, because
+none has been executed.** This is not nine different failures; it is one fact
+(no cluster has run) with nine consequences. They are listed in full under
+"What is unproven" below.
+
+Three kinds of gap appear in this repository, and they are not the same kind:
+
+- **Unproven.** A number or outcome nobody has measured, because no cluster
+  exists to measure it against. The manifest and the test are both believed
+  correct; the measurement is owed.
+- **Doubted.** A mechanism there is a specific, sourced, technical reason to
+  believe does not work as designed, whether or not a cluster ever confirms
+  it. There is one: cross-backend failover, recorded in
+  [ADR 0007](docs/adr/0007-failover-not-expressible-in-gateway-api.md), which
+  is withdrawn from phase 1 rather than pending.
+- **Unverified by construction.** Phase 1's own acceptance bar, which cannot
+  be met until the suite runs once, end to end.
 
 ## What this is
 
@@ -101,12 +110,99 @@ policy/        admission policies, shared by CI and cluster
 - Upstream version numbers come from the release notes of the exact version
   installed, recorded with the date they were read.
 
+## What is unproven
+
+The single most important section of this file. This repository is
+code-complete and unrun, so what follows is not a formality.
+
+### The nine phase 1 acceptance criteria
+
+None has been executed. Settle all nine at once with `bats tests/` against a
+live cluster, then record the result and the date here.
+
+| # | Criterion | Settle it |
+|---|---|---|
+| 1 | `task local:up` takes an empty machine to a ready service | `task local:down && task local:up` |
+| 2 | A JWT obtained from Keycloak returns a streamed chat completion | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
+| 3 | A request without a JWT is rejected with 401 | `bats tests/smoke/06-auth-quota.bats` |
+| 4 | Exceeding the token quota returns 429 | `bats tests/smoke/06-auth-quota.bats` |
+| 5 | Grafana shows TTFT p95 and requests waiting from real traffic | `bats tests/smoke/05-observability.bats` |
+| 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | `bats tests/smoke/07-autoscaling.bats` |
+| 7 | Draining a node keeps the service available, PDB holding | `bats tests/smoke/08-availability.bats` |
+| 8 | The recovery drill runs and its recovery time is committed | `task drill:recovery` |
+| 9 | CI is green on an arm64 runner | push this branch, read `.github/workflows/ci.yml`'s result |
+
+### Measurements still owed
+
+Every owed number is marked at the place it belongs, not in a central list, so
+it cannot drift away from the claim it qualifies. Find them all with:
+
+```
+grep -rn '\*\*Unmeasured (20' . --exclude-dir=.git --exclude-dir=docs/superpowers
+```
+
+which returned **14** on 2026-08-19, across 11 files. Each marker names the
+command that settles it.
+
+Two details in that pattern are deliberate, and both were found by running it
+rather than by reasoning about it. It matches the marker form `**Unmeasured (`
+rather than the bare phrase, so it does not count this paragraph or any other
+prose that mentions the pattern it counts. And it requires a real date, `(20`,
+so it skips the rule that defines the marker in `CLAUDE.md`, which is written
+`(<date>)`.
+
+### An accepted gap, not an owed measurement
+
+llama.cpp emits no traces at all. The engine contract requires an OTLP traces
+endpoint, and llama.cpp's server documentation mentions neither OTLP nor
+OpenTelemetry.
+[ADR 0005](docs/adr/0005-two-runtimes-one-control-plane.md), lines 58 to 64,
+records this as a cost found while implementing and not anticipated when the
+decision was taken. The OTel Collector is deployed anyway, with a receiver no
+engine feeds. The practical effect is that time to first token cannot come
+from spans, and is measured instead by the client-side prober in
+`platform/30-observability/ttft-prober-cronjob.yaml`. Nothing is owed here
+short of adding vLLM in phase 2.
+
+## What is proven, and the sharp limit on it
+
+Nothing that requires a cluster. What holds without one:
+
+- Every `helm install --dry-run=client` and `helm template` this repository's
+  install scripts and Argo CD Applications were checked against **renders
+  without error**.
+- Every `kustomize build` across every overlay renders without error.
+- Every CRD field this repository's manifests use was confirmed against the
+  pinned chart's own rendered schema, not memory.
+- The real `kyverno` CLI confirms the admission policies reject exactly what
+  `tests/smoke/11-policy.bats` asserts they reject (`policy/tests/`), and the
+  fixtures were mutation-checked: reverting the policy under test makes the
+  corresponding case fail.
+- Every shell script parses under bash 3.2.57 (`/bin/bash -n`, the version
+  macOS ships, which `shellcheck` alone does not stand in for).
+- `actionlint` reports the CI workflow clean.
+- **Every pinned image digest resolves to a `linux/arm64` image, and every tag
+  written beside it belongs to that digest.** Checked 2026-08-19 against
+  ghcr.io, quay.io, and Docker Hub over HTTPS, with no Docker daemon: for each
+  entry the tag's index was fetched and the pinned digest confirmed as one of
+  its children, then the digest's own config blob was read for its `os` and
+  `architecture`. All five report `linux/arm64`. This is the substance of
+  `tests/contract/03-images.bats`'s first test, which still cannot run here
+  because `require_arm64` calls `docker buildx imagetools inspect`. The
+  registry answered the same question by a different route. That is not the
+  same as having run the test.
+
+**A passing dry-run does not prove the rendered values are the intended ones.**
+It proves the chart rendered. `CLAUDE.md`'s evidence rules record the two real
+defects that survived several review rounds on this branch for exactly this
+reason.
+
 ## Getting started
 
 **Untried (2026-08-19): the commands below have never been run against a real
 cluster.** They are what the manifests and scripts say should happen, not a
 report of what was observed. Do not read the presence of these instructions
-as a claim that they work; see `docs/UNVERIFIED.md`.
+as a claim that they work; see "What is unproven" above.
 
 Prerequisites: `kubectl`, `helm`, `kind`, `task`, `yq`, `jq`, `bats`,
 `kustomize`, and Docker Desktop with at least 8 CPUs and 20 GiB of memory
@@ -130,8 +226,8 @@ task local:down       # delete the cluster
 `clusters/local-kind/root-app.yaml`, which brings in every other layer as an
 Argo CD Application. Reproducing the whole stack from an empty machine is
 exactly `task local:down && task local:up && bats tests/` - the acceptance
-test for the whole repository, and itself one of the entries in
-`docs/UNVERIFIED.md`.
+test for the whole repository, and itself criterion 1 under "What is
+unproven" above.
 
 `task token`, `task chat`, `task local:status`, and `task drill:drain` remain
 stubs (`task --list-all` shows every task; a stub prints what it would do

@@ -9,10 +9,10 @@
 #
 # Deliberately scoped to apps/ and NOT to ../root-app.yaml. root-app is the
 # one Application applied by hand by `task local:up`; nothing orders it
-# against anything, so it carries no wave. See docs/UNVERIFIED.md for the
-# consequence: tests/smoke/10-gitops.bats counts every Application in the
-# cluster, root-app included, and is predicted to fail on that difference the
-# first time it runs.
+# against anything, so it carries no wave. The consequence is recorded where
+# it belongs, in a comment on tests/smoke/10-gitops.bats' second test: that
+# test counts every Application in the cluster, root-app included, and is
+# predicted to fail on that difference the first time it runs.
 set -euo pipefail
 cd "$(dirname "$0")"
 

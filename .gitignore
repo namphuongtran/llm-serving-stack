@@ -30,7 +30,18 @@ bench/raw/
 # Design and planning documents written during the build. Untracked on
 # 2026-08-19 by request, with `git rm --cached -r docs/superpowers`; the files
 # stay on disk. Anything in here that has to survive a clone belongs in an ADR
-# (docs/adr/), in docs/UNVERIFIED.md, or in a code comment. Every reference to
+# (docs/adr/), in README.md, or in a code comment. Every reference to
 # this directory that remains in a tracked file is marked "local working
 # document, not in git" so nobody follows a pointer a clone cannot resolve.
 docs/superpowers/
+
+# Untracked on 2026-08-19 by request, with `git rm --cached`. Before it was
+# removed its load-bearing records were moved into tracked homes, so nothing
+# was lost with it: the nine phase 1 acceptance criteria and the proven/unproven
+# account are in README.md, the predicted sync-wave defect is a comment in
+# tests/smoke/10-gitops.bats, the two dry-run defects are in CLAUDE.md's
+# evidence rules, and the CI untried records are in the workflow itself.
+# Owed measurements were never centralised there anyway - each lives beside
+# the claim it qualifies, findable with
+# `grep -rn '\*\*Unmeasured (20' . --exclude-dir=.git --exclude-dir=docs/superpowers`.
+docs/UNVERIFIED.md

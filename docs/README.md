@@ -34,13 +34,14 @@ ADR supersedes the old one and the old one stays.
 
 ## The spec
 
-[`superpowers/specs/`](superpowers/specs/) holds the design this repository
-implements, including the evidence log with the date each fact was verified.
+`superpowers/specs/` holds the design this repository implements, including
+the evidence log with the date each fact was verified. It is a local working
+document and is not in git, so a clone does not get it.
 
 ## What has not run yet
 
-[`UNVERIFIED.md`](UNVERIFIED.md) is the one place that states plainly what is
-unproven, what is unverified by construction, and what is doubted on
-technical grounds rather than merely unmeasured. Every other document above
-can name a gap in its own layer; this one is the reconciled account across
-all of them.
+Every document above can name a gap in its own layer. The account across all
+of them is the "What is unproven" section of the repository root
+[`README.md`](../README.md). It states what is unproven, what is unverified by
+construction, and what is doubted on technical grounds rather than merely
+unmeasured.
