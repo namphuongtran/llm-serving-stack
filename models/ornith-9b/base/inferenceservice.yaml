@@ -5,6 +5,32 @@ metadata:
   namespace: llm
   annotations:
     serving.kserve.io/deploymentMode: RawDeployment
+    # KServe's default autoscaler class is HPA (constants.go at tag v0.20.0,
+    # read 2026-08-19: `DefaultAutoscalerClass = AutoscalerClassHPA`). Without
+    # this annotation KServe creates its own HorizontalPodAutoscaler on the
+    # generated predictor Deployment, and KEDA refuses a ScaledObject whose
+    # scaleTargetRef is already owned by another HPA - so
+    # models/ornith-9b/overlays/local/scaledobject.yaml would never become
+    # Ready.
+    #
+    # "external", not "keda", of the four values in
+    # constants.AutoscalerAllowedClassList (hpa, external, keda, none):
+    #   - `keda` makes KServe's OWN keda reconciler
+    #     (reconcilers/autoscaler/autoscaler_reconciler.go:95) generate a
+    #     ScaledObject from the InferenceService spec. This repository writes
+    #     its own ScaledObject, with a Prometheus trigger on
+    #     llmstack:requests_waiting that the InferenceService spec cannot
+    #     express, so a KServe-generated one would be a second, competing
+    #     scaler.
+    #   - `external` means "some controller outside KServe scales this".
+    #     reconcilers/hpa/hpa_reconciler.go:250 `shouldCreateHPA` returns
+    #     false unless the annotation is absent or "hpa", and line 247
+    #     `shouldDeleteHPA` removes an HPA KServe already created once the
+    #     class becomes external - so KServe creates nothing and cleans up
+    #     after an upgrade from a cluster that ran without this annotation.
+    #   - `none` behaves the same as external in both functions, but says
+    #     "nothing scales this", which is false here.
+    serving.kserve.io/autoscalerClass: external
 spec:
   predictor:
     minReplicas: 1          # never zero by default: cold start is minutes
@@ -27,11 +53,27 @@ spec:
     model:
       modelFormat: { name: gguf }
       runtime: llamacpp-arm64
-      # Left empty on purpose, in every overlay: a non-empty value would make
-      # KServe inject its own storage-initializer, which expects a model
-      # repository rather than one GGUF file (risk R1). The fetch-weights
-      # init container in each overlay's patch fetches the file itself.
-      storageUri: ""
+      # storageUri is OMITTED on purpose, in every overlay. Omitting the key
+      # is what suppresses KServe's storage-initializer injection; an empty
+      # string is NOT the same thing and does not suppress it.
+      #
+      # Read at the pinned v0.20.0 tag, 2026-08-19:
+      #   pkg/controller/v1beta1/inferenceservice/components/predictor.go:116
+      #   `if sourceURI := predictor.GetStorageUri(); sourceURI != nil {`
+      # The guard is `!= nil`, not `!= ""`. `storageUri: ""` unmarshals into
+      # a non-nil *string pointing at the empty string, so the guard passes,
+      # addStorageInitializerAnnotations (same file, line 294) sets the
+      # internal source-uri annotation to "", and the storage-initializer
+      # injector then appends an init container plus a volumeMount named
+      # `kserve-provision-location` at /mnt/models. The local overlay already
+      # mounts a volume named `models` at /mnt/models, and KServe
+      # de-duplicates mounts by volume NAME, not by path, so the pod would
+      # carry two mounts at one path and the API server would reject it
+      # inside the ReplicaSet, where the reason appears only in events.
+      #
+      # The reason for suppressing injection at all is unchanged (risk R1):
+      # the initializer expects a model repository, not one GGUF file. The
+      # fetch-weights init container in each overlay's patch fetches the file.
       # The friendly served name is a model fact, not a runtime fact: KServe
       # appends this to the ServingRuntime's args, so llama.cpp serves the
       # model as "ornith-9b" instead of the raw file path. If KServe's
