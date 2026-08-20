@@ -9,13 +9,15 @@ unless it is given its own policies: the default is open, not closed.
   lookup happens on the request path, which keeps the inference path stateless.
 - `TokenRateLimitPolicy`: counts tokens, not requests. One request can cost a
   hundred tokens or a hundred thousand, so request counting is meaningless here.
-- `AuthorizationPolicy`: closes the hole neither of the two above can see. Both
-  filter traffic arriving at the Gateway, so neither applies to a Pod inside the
-  cluster calling `ornith-9b-predictor` directly. Measured 2026-08-20 from a Pod
-  in this namespace carrying no token: HTTP 200 on `/v1/models`, and HTTP 200 on
-  `/v1/chat/completions`, a real inference charged to nobody. R12 in
-  [`docs/sad/11-risks-and-debt.md`](../../docs/sad/11-risks-and-debt.md).
-  **Written and not yet applied to any cluster.**
+**Neither policy sees traffic that does not arrive at the Gateway.** Measured
+2026-08-20 from a Pod in this namespace carrying no token: HTTP 200 on
+`/v1/models`, and HTTP 200 on `/v1/chat/completions`, a real inference charged to
+nobody. There is no `AuthorizationPolicy` here to close that, and there was one
+for about twenty minutes on 2026-08-20 before it was deleted: it closed the hole
+and killed every predictor scrape target, because Prometheus lives outside the
+ambient mesh and so has no identity to allow. R12 in
+[`docs/sad/11-risks-and-debt.md`](../../docs/sad/11-risks-and-debt.md) carries the
+measurements and what would actually work.
 
 The quota counter is keyed on `azp`, the client_id, so each client has its own
 budget and the tier only chooses how large that budget is. It was keyed on `tier`
