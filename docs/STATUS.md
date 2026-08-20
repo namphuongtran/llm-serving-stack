@@ -399,10 +399,40 @@ looks:
 | The retry rides out an unreachable webhook | **no** - proven locally by mutation, not here |
 | CI is reliably green | **no** - one sample, and the interesting branch was cold |
 
-The timing also refutes a tempting shortcut: 194 ms failed and 248 ms passed, so
-the gap alone does not decide it. What decides it is whether the endpoints were
-programmed at that instant, which no wall-clock threshold can predict. That is
-why the answer is a retry rather than a `sleep`.
+### A second run, and a sentence of mine that it corrects
+
+Run `32347833827` on `6a34cab` also passed all four jobs, and also never entered
+the retry branch: `webhook not reachable yet` and `succeeded on attempt` both
+appear **0** times, as does `failed calling webhook`.
+
+Every gap measured so far, between `successfully rolled out` and the first object
+that needs the webhook:
+
+| Site | Gap | Result |
+|---|---|---|
+| Kyverno policies, `smoke` | **73 ms** | failed |
+| Kyverno policies, `smoke` | 145 ms | passed |
+| KServe model, `observability` | **194 ms** | failed |
+| KServe model, `observability` | 248 ms | passed |
+| KServe model, `observability` | 255 ms | passed |
+| KServe model, `smoke` | about 42 s | passed |
+
+**This corrects something written two commits ago.** That entry said the timings
+"refute a tempting shortcut: 194 ms failed and 248 ms passed, so the gap alone
+does not decide it". Two points cannot refute a threshold, and with six points
+every failure sits below every success at the same site, which is exactly what a
+propagation delay looks like. The data is **consistent** with a threshold, not
+against one.
+
+A retry is still the right fix, for a different reason than the one given: the
+threshold is not a constant. It moves with runner load, cluster size, and how
+many objects kube-proxy is reprogramming at that moment. A `sleep` has to guess
+a number that has no principled value; a retry adapts to whatever the number is
+on the day.
+
+That is the second time in this session a correct set of numbers carried a wrong
+conclusion, the first being the free-tier quota in finding 4. Both were caught by
+taking another measurement rather than by re-reading the sentence.
 
 > **Untried (2026-08-20):** whether the retry branch works in CI. Five mutation
 > tests pass locally across bash, zsh, and GNU coreutils; CI has gone green once
