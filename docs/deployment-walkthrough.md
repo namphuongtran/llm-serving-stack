@@ -1040,8 +1040,14 @@ Plugin kuadrant-wasm-shim failed to load
 Plugin configured to fail closed failed to load
 ```
 
-Kuadrant enforces policy through a Wasm module that Envoy fetches from a remote
-registry, configured **fail closed**. The fetch failed, so the gateway rejected
+Kuadrant enforces policy through a Wasm module that Envoy fetches over HTTP,
+configured **fail closed**. This paragraph said "from a remote registry" until
+2026-08-20, and that was wrong. Read out of the live `EnvoyFilter`
+`istio-system/kuadrant-llm`, the source is
+`http://kuadrant-operator-wasm.kuadrant-system.svc.cluster.local:8082/plugin.wasm`:
+another Pod in this cluster, not the internet. See R19 in
+[`docs/sad/11-risks-and-debt.md`](sad/11-risks-and-debt.md), because this failure
+recurred on 2026-08-20 with no bootstrap involved. The fetch failed, so the gateway rejected
 everything, valid tokens included. Restarting `deploy/llm-istio` made it fetch
 again, and the full path came good: 401 with no token, 401 with a forged token,
 200 with a Keycloak JWT serving `ornith-9b`.

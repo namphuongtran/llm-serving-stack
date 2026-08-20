@@ -572,8 +572,13 @@ The Kuadrant operator had started before the Gateway API CRDs existed, caches
 that, and refuses every policy until it is restarted by hand - it says so in its
 own status message. Nothing crashed, so nothing restarted it. Then a second
 manual restart was needed, of the gateway itself, because Kuadrant enforces
-through a Wasm module Envoy fetches from a remote registry and that fetch is
-configured to fail closed. After both restarts the path was correct: 401 with no
+through a Wasm module Envoy fetches over HTTP and that fetch is configured to
+fail closed. **Not from a remote registry**, which this file said until
+2026-08-20: the `EnvoyFilter` `istio-system/kuadrant-llm` names
+`http://kuadrant-operator-wasm.kuadrant-system.svc.cluster.local:8082/plugin.wasm`,
+an in-cluster Service. That correction matters, because a public-registry
+dependency and a dependency on another Pod in this cluster have different fixes.
+See R19. After both restarts the path was correct: 401 with no
 token, 401 with a forged one, 200 with a Keycloak JWT.
 
 Two manual restarts is not none, and this criterion asks for none. `task

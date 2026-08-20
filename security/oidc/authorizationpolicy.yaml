@@ -1,0 +1,37 @@
+# Closes R12 (docs/sad/11-risks-and-debt.md): before this file, any pod in the
+# cluster reached the engine with no token and no quota. Measured on a live
+# cluster 2026-08-20 from a pod in namespace llm:
+#   GET  /v1/models          -> HTTP 200, serving ornith-9b
+#   POST /v1/chat/completions -> HTTP 200, a real inference charged to nobody
+#
+# No selector, so this covers every workload in namespace llm, including models
+# added later. A selector would have to name a label, and the two candidates
+# both fail: serving.kserve.io/inferenceservice needs an exact value per model,
+# and app.kubernetes.io/part-of is absent from Keycloak's pods (R20).
+#
+# ALLOW with a source list is deny-by-default for everything not listed: Istio
+# permits only the named principals to reach the selected workloads.
+#
+# The two principals were read off the running cluster, not guessed:
+#   kubectl get pod -n istio-system -l gateway.networking.k8s.io/gateway-name=llm \
+#     -o jsonpath='{.items[*].spec.serviceAccountName}'   -> llm-istio
+#   kubectl get pods -n observability -o jsonpath='...'    -> kube-prometheus-stack-prometheus
+#
+# Prometheus is on the list because the engine serves /metrics and /v1 on the
+# same port, 8080, and ambient mode enforces L4 only. So this cannot separate a
+# scrape from an inference call: whoever may scrape may also infer. Separating
+# them needs an L7 waypoint, which is a component this cluster has no memory for
+# (R4). The narrower identity is the mitigation that fits.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: llm-allow-gateway-and-scrape
+  namespace: llm
+spec:
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-system/sa/llm-istio
+              - cluster.local/ns/observability/sa/kube-prometheus-stack-prometheus
