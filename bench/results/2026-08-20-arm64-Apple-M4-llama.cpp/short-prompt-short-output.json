@@ -1,0 +1,29 @@
+{
+  "scenario": {
+    "name": "short-prompt-short-output",
+    "question": "How responsive is a small interactive request?",
+    "prompt_tokens": 32,
+    "max_tokens": 64,
+    "num_prompts": 40,
+    "concurrency": 4
+  },
+  "runs": [
+    {
+      "concurrency": 4,
+      "requests": 40,
+      "errors": 31,
+      "error_counts": {
+        "HTTPError: HTTP Error 500: Internal Server Error": 9,
+        "HTTPError: HTTP Error 503: Service Unavailable": 3,
+        "HTTPError: HTTP Error 401: Unauthorized": 19
+      },
+      "wall_seconds": 1149.835,
+      "ttft_p50": 186.4938831670006,
+      "ttft_p95": 199.8523852090002,
+      "itl_p95": 29.683947708999767,
+      "output_tokens": 236,
+      "output_tokens_per_second": 0.21,
+      "first_error": "HTTPError: HTTP Error 500: Internal Server Error"
+    }
+  ]
+}

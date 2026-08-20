@@ -41,10 +41,12 @@ break a cluster job. Four samples were not enough to support the word "holds".
 500 rather than 401 under concurrency, and KEDA's third replica can never
 schedule. `docs/STATUS.md`, "The first load test", carries all of it.
 
-**Criterion 4 needs a caveat that is a limits decision, not a test bug.** The
-free tier is 500 tokens per 60-second window, and llama.cpp reports 0.55 tokens
-per second here, which is 33 tokens per window. The quota is unreachable on the
-local engine. CI settles it with a much smaller model. Measured 2026-08-20.
+**Criterion 4 is reachable locally after all**, and this page said otherwise for
+a day. The free tier is 500 tokens per 60-second window and llama.cpp generates
+0.55 tokens per second, which is 33 tokens per window - conclusive only if the
+counter reads generated tokens. It reads `usage.total_tokens`, prompt included.
+Measured 2026-08-20 06:55Z: one ~500-token prompt returned
+`usage.total_tokens=552`, and the next request got 429.
 
 ## Quality attributes and how each is delivered
 
@@ -76,9 +78,29 @@ and has never run against a live predictor.
 | `03-shared-prefix.json` | A 3,500-token shared prefix across 24 prompts | `bench/scenarios/03-shared-prefix.json` |
 | `04-concurrency-sweep.json` | Throughput against concurrency | `bench/scenarios/04-concurrency-sweep.json` |
 
-> **Unmeasured (2026-08-20):** every benchmark number. Run `task bench`, or one
-> scenario with `SCENARIOS=bench/scenarios/01-short.json ./bench/run.sh`, then
-> commit the dated result directory under `bench/results/`.
+**First benchmark numbers, 2026-08-20**, scenario `01-short.json`, 40 requests at
+concurrency 4 against 2 replicas:
+
+| TTFT p50 | TTFT p95 | ITL p95 | out tok/s | errors |
+|---|---|---|---|---|
+| 186.494s | 199.852s | 29.684s | 0.210 | **31 of 40** |
+
+**Read the error count before the latency.** Nine were HTTP 500 and three were
+503, both the load-induced Authorino failure. Nineteen were **HTTP 401**, and
+those are a defect in the harness rather than in the platform: `bench/run.sh:24`
+fetches one token, the realm sets `accessTokenLifespan: 900`, and this run took
+about 19 minutes. The token expired mid-run. Every scenario in `bench/scenarios/`
+takes longer than 15 minutes on this engine, so no benchmark here can currently
+complete without this happening.
+
+The latency figures are therefore measured on 9 successful requests out of 40,
+under a cluster that was also failing, and should be read as a first data point
+rather than as this stack's performance.
+
+> **Unmeasured (2026-08-20):** clean benchmark numbers, from a run whose token
+> does not expire and whose gateway is not returning 500. Fix `bench/run.sh` to
+> refresh the token, then re-run `task bench` and commit the dated result
+> directory.
 
 The comparison worth running first is `03-shared-prefix.json` against
 `01-short.json` on the same engine. It shows whatever benefit a **single**
@@ -92,9 +114,10 @@ second replica. It is not the phase 3 claim, and
 nine runs failed, and retaking it until it looked green is the one thing this
 repository forbids.*
 
-> **Screenshot blocked (2026-08-20):** the benchmark summary. `bench/run.sh` was
-> still running, and it is also what generated the load behind finding 2.
-> [`images/README.md`](images/README.md), image 10.
+![Benchmark summary: 31 errors out of 40 requests](images/10-bench-summary.png)
+
+*Captured 2026-08-20 06:52Z. The Errors section is the finding: 19 x 401 is the
+run outliving its own access token.*
 
 ## How claims are kept honest
 

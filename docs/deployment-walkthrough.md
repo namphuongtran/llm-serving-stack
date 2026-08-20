@@ -850,6 +850,36 @@ tokens per second or a faster engine. That is a decision about the limits, not a
 patch to the test, and the test says so in its failure message rather than
 leaving a red result to be misread as a broken AuthPolicy.
 
+## Correction, 2026-08-20: the quota IS reachable here, and this section's reasoning was wrong
+
+The paragraphs above are kept because the arithmetic in them is correct and the
+conclusion drawn from it is not. The error is one word:
+
+> "the budget can only be spent if the stack **generates** more than 500 tokens
+> inside 60 seconds"
+
+`usage.total_tokens` is prompt tokens **plus** completion tokens, not completion
+tokens alone. So the generation rate is one way to spend the budget and not the
+only one. A single request with a long enough prompt spends it without
+generating anything at all.
+
+Measured 2026-08-20 06:55Z against the free tier, with a roughly 500-token prompt
+and `max_tokens: 1`:
+
+```
+request 1  ->  HTTP 200   usage.total_tokens=552
+request 2  ->  HTTP 429
+```
+
+Two requests. The first is over the 500-token budget on its own, and the second
+is rejected. **Criterion 4 is settleable on this machine**, and the engine's
+0.55 tokens per second never had to enter into it.
+
+What this cost is worth stating plainly. The 0.55 figure was measured, dated, and
+correct. The claim built on it was not, and no measurement was taken to check the
+claim itself, because the arithmetic looked conclusive. A number that is right
+does not make the sentence around it right.
+
 ### Criterion 4 holds, in CI, and the local result was not the whole story
 
 The rewritten `06-auth-quota.bats` ran in CI run `32320742653` and

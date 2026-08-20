@@ -73,9 +73,12 @@ runs 1 to 3 are why run 4 was clean.
   `clusters/local-kind/wait-for-sync.sh` is the check, and it reads sync status,
   counts the children against the directory, and requires every Application green
   in the same sample.
-- Criterion 4 moved from untested to **untestable on this engine**: the free tier
-  is 500 tokens per 60s window and llama.cpp reports 0.55 tokens per second here,
-  which is 33 tokens per window. That is a limits decision, not a test bug.
+- Criterion 4 is **reachable on this engine**, measured 2026-08-20: one request
+  with a ~500-token prompt returned `usage.total_tokens=552` and the next got
+  429. This repository said "untestable on this engine" for a day, reasoning from
+  llama.cpp's 0.55 tokens per second. That reasoning counted generated tokens
+  only; `usage.total_tokens` includes the prompt. The measurement was right and
+  the sentence built on it was wrong.
 
 **The lesson to carry, not just the status.** That run found seven defects which
 four separate static review passes over the whole repository had all missed: a

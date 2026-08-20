@@ -195,6 +195,62 @@ established is the correlation and the timestamps; what is owed is the cause.
 > `kubectl get events -A --sort-by=.lastTimestamp -w` captured to a file, and
 > read the reasons rather than inferring them from restart counts.
 
+### 4. The free tier quota IS reachable here, and this file said it was not
+
+For one day this file, `CLAUDE.md`, `docs/deployment-walkthrough.md`, and two
+files in `docs/sad/` all said criterion 4 was untestable on this engine. The
+reasoning was:
+
+> the budget can only be spent if the stack **generates** more than 500 tokens
+> inside 60 seconds, and llama.cpp generates 0.55 tokens per second, which is 33
+> tokens per window
+
+Every number in that sentence is correct and dated. The conclusion is wrong,
+because `usage.total_tokens` is prompt tokens **plus** completion tokens.
+Generation rate is one way to spend the budget, not the only one.
+
+Measured 2026-08-20 06:55Z, free tier, a roughly 500-token prompt with
+`max_tokens: 1`:
+
+```
+request 1  ->  HTTP 200   usage.total_tokens=552
+request 2  ->  HTTP 429
+```
+
+Two requests settle it. **The lesson is not about tokens.** A measured, dated,
+correct number was used to support a claim, and nobody measured the claim,
+because the arithmetic looked conclusive. This repository's rule about numbers
+did not catch it, because the number was never the problem.
+
+### 5. No benchmark on this engine can finish before its own token expires
+
+The first benchmark run this repository has ever completed, scenario
+`01-short.json`, 40 requests at concurrency 4:
+
+| TTFT p50 | TTFT p95 | ITL p95 | out tok/s | errors |
+|---|---|---|---|---|
+| 186.494s | 199.852s | 29.684s | 0.210 | **31 of 40** |
+
+Nine errors were HTTP 500 and three were 503, both finding 2. **Nineteen were
+HTTP 401**, and those are a defect in the harness:
+
+- `bench/run.sh:24` fetches one token: `TOKEN="$(get_token llm-tier-pro)"`.
+- `platform/15-keycloak/realm-export.json` sets `accessTokenLifespan: 900`.
+- This run took about 19 minutes, from 06:33Z to 06:52Z.
+
+The token expired at about minute 15 and every request after that was rejected.
+At 0.210 output tokens per second, **every scenario in `bench/scenarios/` runs
+longer than 15 minutes on this engine**, so this is not a corner case: no
+benchmark here can currently complete.
+
+The latency figures above come from 9 successful requests out of 40, on a cluster
+that was also failing. They are a first data point and not this stack's
+performance.
+
+> **Unmeasured (2026-08-20):** clean benchmark numbers. Fix `bench/run.sh` to
+> refresh the token during a run, then re-run `task bench` on a quiet cluster and
+> commit the dated result directory under `bench/results/`.
+
 ## What is unproven
 
 The single most important section of this file. One run on 2026-08-19 settled two
@@ -213,7 +269,7 @@ and the date here.
 | 1 | `task local:up` takes an empty machine to a ready service | **HOLDS 2026-08-20**, on run 4. Exit 0 in 17m09s, sixteen Applications green, 401 without a token and a streamed answer with one, no manual step | `task local:down && task local:up` |
 | 2 | A JWT obtained from Keycloak returns a streamed chat completion | **HOLDS 2026-08-19** | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
 | 3 | A request without a JWT is rejected with 401 | **HOLDS 2026-08-19** on an idle cluster. **Degrades under sustained load**: 2 of 20 returned 500, measured 2026-08-20 06:32Z. Never 200 | `bats tests/smoke/06-auth-quota.bats` |
-| 4 | Exceeding the token quota returns 429 | **HOLDS 2026-08-20**, in CI. Not reachable on the local engine, see below | `bats tests/smoke/06-auth-quota.bats` |
+| 4 | Exceeding the token quota returns 429 | **HOLDS 2026-08-20**, in CI **and locally**. This row said "not reachable on the local engine" for a day; see finding 4 | `bats tests/smoke/06-auth-quota.bats` |
 | 5 | Grafana shows TTFT p95 and requests waiting from real traffic | untested | `bats tests/smoke/05-observability.bats` |
 | 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | **partly, and the test would pass anyway.** KEDA set `spec.replicas: 3` under real load 2026-08-20, and the third pod **can never schedule on this cluster**. See "The first load test" below | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, PDB holding | untested | `bats tests/smoke/08-availability.bats` |

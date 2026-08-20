@@ -45,11 +45,12 @@ seconds, so `httproute.yaml` sets `request` and `backendRequest` timeouts to
 15-second `preStop` sleep, so a pod finishes the stream it is already writing
 instead of being killed mid-answer.
 
-> **Screenshot blocked (2026-08-20):** `task chat` returned
-> `Internal Server Error.` on 6 of 6 attempts, because Authorino returns
-> `UNAVAILABLE` under concurrent load. This is finding 2 in
-> [`docs/STATUS.md`](../STATUS.md), not a problem with the capture.
-> [`images/README.md`](images/README.md), image 3.
+![task chat streaming an answer through the gateway](images/03-chat-streaming.png)
+
+*Captured 2026-08-20 06:53Z, on the first attempt after the benchmark load
+stopped. Six earlier attempts under load all returned `Internal Server Error.`,
+which is finding 2 in [`docs/STATUS.md`](../STATUS.md) rather than a problem with
+this command.*
 
 ## 6.2 The two rejections
 
@@ -93,20 +94,24 @@ with a real JWT. It must never be weakened to "not 200", because 503 is the
 fail-closed case and would satisfy that. `clusters/local-kind/verify-serving.sh`
 is the assertion.
 
-**The free tier cannot be exercised on this engine.** llama.cpp reports 0.55
-tokens per second here, which is 33 tokens in a 60-second window against a limit
-of 500. That is a limits decision, not a test bug. Criterion 4 is settled in CI,
-where the CI overlay uses a much smaller model. Measured 2026-08-20; see
-[`docs/STATUS.md`](../STATUS.md).
+**The free tier is reachable here, in two requests.** This document said the
+opposite for a day, and the correction is worth reading because the arithmetic
+behind the wrong version was sound. llama.cpp generates 0.55 tokens per second,
+so 33 tokens per 60-second window against a 500-token budget - which would put
+the quota out of reach **if the counter only read generated tokens**. It reads
+`usage.total_tokens`, which includes the prompt. Measured 2026-08-20 06:55Z:
+
+![The free tier budget, spent in one request](images/05-429-quota.png)
+
+*One ~500-token prompt with `max_tokens: 1` returned `usage.total_tokens=552`,
+and the next request got 429.*
 
 ![401 with no token, 401 forged, 200 with a real JWT](images/04-401-then-200.png)
 
 *Captured 2026-08-20 on an idle cluster. Under load this path returns 500 rather
 than 401; see [`docs/STATUS.md`](../STATUS.md), finding 2.*
 
-> **Screenshot blocked (2026-08-20):** the 429. The free tier is out of reach on
-> this engine, and the long-prompt attempt that should have reached it hit the
-> same HTTP 500. [`images/README.md`](images/README.md), image 5.
+The 429 image is in section 6.2 above, beside the limit it demonstrates.
 
 ## 6.3 Scaling on queue depth
 

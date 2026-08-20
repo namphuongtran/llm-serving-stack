@@ -137,16 +137,21 @@ rules ([`CLAUDE.md`](../../CLAUDE.md)):
 
 ## Screenshots
 
-Ten images belong in this document. **Seven exist**, captured from a running
-cluster on 2026-08-20. Three are blocked, two of them by a defect this
-repository now has a record of rather than by the capture tooling.
-[`images/README.md`](images/README.md) lists each one, how it was produced, the
-command that reproduces it, and for the missing three, what blocks it.
+**All ten exist**, captured from a running cluster on 2026-08-20.
+[`images/README.md`](images/README.md) lists each one, how it was produced, and
+the command that reproduces it.
 
-Two of the seven do not show what the plan expected, and both are kept as they
-came out: the KEDA image shows a third replica that can never schedule, and the
-CI image shows four red runs. Retaking either until it looked right is the one
-thing this repository forbids.
+**Four of the ten do not show what the plan expected, and all four are kept as
+they came out.** The KEDA image shows a third replica that can never schedule.
+The CI image shows four red runs, so it is named `08-ci-runs.png` rather than
+`08-ci-green.png`. The benchmark image shows 31 errors in 40 requests. And the
+429 image exists at all only because taking it disproved a claim four files in
+this repository were making. Retaking any of them until it looked right is the
+one thing this repository forbids.
+
+Taking these ten pictures found five defects. That is not a coincidence: every
+one of them needed the stack to be doing something, and until then it had only
+ever been asked one question at a time.
 
 ## License
 
