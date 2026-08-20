@@ -137,9 +137,16 @@ rules ([`CLAUDE.md`](../../CLAUDE.md)):
 
 ## Screenshots
 
-Ten images belong in this document and none exists yet, because they can only be
-captured from a running cluster. [`images/README.md`](images/README.md) lists
-each one, the exact command that produces it, and the file that will embed it.
+Ten images belong in this document. **Seven exist**, captured from a running
+cluster on 2026-08-20. Three are blocked, two of them by a defect this
+repository now has a record of rather than by the capture tooling.
+[`images/README.md`](images/README.md) lists each one, how it was produced, the
+command that reproduces it, and for the missing three, what blocks it.
+
+Two of the seven do not show what the plan expected, and both are kept as they
+came out: the KEDA image shows a third replica that can never schedule, and the
+CI image shows four red runs. Retaking either until it looked right is the one
+thing this repository forbids.
 
 ## License
 

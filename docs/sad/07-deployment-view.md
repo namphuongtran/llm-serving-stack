@@ -56,9 +56,10 @@ safe while the node image stays digest-pinned. Read
 [`docs/deployment-walkthrough.md`](../deployment-walkthrough.md) before bumping
 `kubernetes.kind_node`.
 
-> **Screenshot owed (2026-08-20):** `kubectl get pods -n llm -o wide` showing the
-> two predictor replicas on two different nodes.
-> [`images/README.md`](images/README.md), image 6.
+![Two predictor replicas on two different nodes](images/06-replicas-two-nodes.png)
+
+*Captured 2026-08-20. The `NODE` column shows `worker` and `worker2`, and the PDB
+allows one disruption. This is the property the node-drain runbook depends on.*
 
 ## What each layer costs
 

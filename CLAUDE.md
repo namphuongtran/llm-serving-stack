@@ -36,7 +36,8 @@ What that run settles, and what it does not:
 
 - All thirteen layers came up on a 3-node `kind` cluster, and the service
   answered a real request. That run settled two of the nine acceptance criteria.
-  Five of nine hold as of 2026-08-20; `docs/STATUS.md` is the count of record.
+  Four of nine hold as of 2026-08-20; `docs/STATUS.md` is the count of record.
+  The count moved in both directions that day - read it, do not assume it rises.
 - It used the **imperative path** (`platform/NN-*/install.sh`), not
   `task local:up`. Two things it needs were applied by hand: the CoreDNS manifest
   and the model overlay.

@@ -17,26 +17,29 @@ it is a wish.
 |---|---|---|---|
 | 1 | `task local:up` takes an empty machine to a ready service | **holds** (2026-08-20), run 4, 17m09s, exit 0 | `task local:down && task local:up` |
 | 2 | A JWT obtained from Keycloak returns a streamed chat completion | **holds** (2026-08-19) | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
-| 3 | A request without a JWT is rejected with 401 | **holds** (2026-08-19) | `bats tests/smoke/06-auth-quota.bats` |
+| 3 | A request without a JWT is rejected with 401 | **holds** (2026-08-19) idle; **degrades under load**, 500 not 401 | `bats tests/smoke/06-auth-quota.bats` |
 | 4 | Exceeding the token quota returns 429 | **holds** (2026-08-20), in CI only | `bats tests/smoke/06-auth-quota.bats` |
 | 5 | Grafana shows TTFT p95 and requests waiting from real traffic | untested | `bats tests/smoke/05-observability.bats` |
-| 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | untested | `bats tests/smoke/07-autoscaling.bats` |
+| 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | **partly** (2026-08-20): `spec.replicas` reached 3, the third pod cannot schedule, and the test would pass | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, the PDB holding | untested | `bats tests/smoke/08-availability.bats` |
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
-| 9 | CI is green on an arm64 runner | **holds** (2026-08-20), four consecutive green runs | `gh run list` |
+| 9 | CI is green on an arm64 runner | **flaky** (2026-08-20): four green, then two red in `observability` | `gh run list` |
 
-Five of nine hold, and the four that do not have all simply never been run.
-Nothing is failing.
+Four of nine hold. The count moved twice on 2026-08-20, in both directions, and
+that is the useful thing about it rather than an embarrassment.
 
-Two moved on 2026-08-20. **Criterion 9** turned green at CI run `32323568376` and
-has stayed green for four runs; both earlier failures were defects in tests, not
-in the platform, because both cluster jobs had already built a real `kind`
-cluster and installed the whole platform before failing. **Criterion 1** was
-settled on run 4 of the pull path: 17 minutes 9 seconds, exit 0, sixteen
-Applications green, and a request path checked independently of the script that
-reported it. `docs/STATUS.md` carries both accounts, including the two container
-restarts that Kubernetes performed on its own and the three TTFT prober pods
-that failed while the model was still loading.
+**Criterion 1 was settled** on run 4 of the pull path: 17 minutes 9 seconds,
+exit 0, sixteen Applications green, and a request path checked independently of
+the script that reported it.
+
+**Criterion 9 was recorded as holding and then stopped.** Four consecutive CI
+runs were green, which is what the claim was measured on; the next two were red,
+both in `observability`, both triggered by documentation-only commits that cannot
+break a cluster job. Four samples were not enough to support the word "holds".
+
+**Criteria 3 and 6 gained caveats from the first load test.** The gateway returns
+500 rather than 401 under concurrency, and KEDA's third replica can never
+schedule. `docs/STATUS.md`, "The first load test", carries all of it.
 
 **Criterion 4 needs a caveat that is a limits decision, not a test bug.** The
 free tier is 500 tokens per 60-second window, and llama.cpp reports 0.55 tokens
@@ -83,8 +86,15 @@ replica's own KV cache reuse gives, which needs no cache-aware routing and no
 second replica. It is not the phase 3 claim, and
 [`docs/08-why-llm-d.md`](../08-why-llm-d.md) is careful to keep the two apart.
 
-> **Screenshot owed (2026-08-20):** the `bench/summarise.py` output, and the four
-> green CI jobs. [`images/README.md`](images/README.md), images 10 and 8.
+![CI run history: nine runs, five green and four red](images/08-ci-runs.png)
+
+*Captured 2026-08-20. Named `08-ci-runs.png`, not `08-ci-green.png`: four of the
+nine runs failed, and retaking it until it looked green is the one thing this
+repository forbids.*
+
+> **Screenshot blocked (2026-08-20):** the benchmark summary. `bench/run.sh` was
+> still running, and it is also what generated the load behind finding 2.
+> [`images/README.md`](images/README.md), image 10.
 
 ## How claims are kept honest
 

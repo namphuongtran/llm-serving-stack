@@ -45,8 +45,11 @@ seconds, so `httproute.yaml` sets `request` and `backendRequest` timeouts to
 15-second `preStop` sleep, so a pod finishes the stream it is already writing
 instead of being killed mid-answer.
 
-> **Screenshot owed (2026-08-20):** `task chat` streaming an answer through the
-> gateway. [`images/README.md`](images/README.md), image 3.
+> **Screenshot blocked (2026-08-20):** `task chat` returned
+> `Internal Server Error.` on 6 of 6 attempts, because Authorino returns
+> `UNAVAILABLE` under concurrent load. This is finding 2 in
+> [`docs/STATUS.md`](../STATUS.md), not a problem with the capture.
+> [`images/README.md`](images/README.md), image 3.
 
 ## 6.2 The two rejections
 
@@ -96,8 +99,14 @@ of 500. That is a limits decision, not a test bug. Criterion 4 is settled in CI,
 where the CI overlay uses a much smaller model. Measured 2026-08-20; see
 [`docs/STATUS.md`](../STATUS.md).
 
-> **Screenshot owed (2026-08-20):** the 401 and 200 pair, and the 429.
-> [`images/README.md`](images/README.md), images 4 and 5.
+![401 with no token, 401 forged, 200 with a real JWT](images/04-401-then-200.png)
+
+*Captured 2026-08-20 on an idle cluster. Under load this path returns 500 rather
+than 401; see [`docs/STATUS.md`](../STATUS.md), finding 2.*
+
+> **Screenshot blocked (2026-08-20):** the 429. The free tier is out of reach on
+> this engine, and the long-prompt attempt that should have reached it hit the
+> same HTTP 500. [`images/README.md`](images/README.md), image 5.
 
 ## 6.3 Scaling on queue depth
 
@@ -139,8 +148,12 @@ replicas on two nodes, guarded by a `PodDisruptionBudget` with
 with its cold start to be measured rather than assumed
 ([ADR 0002](../adr/0002-standard-mode-not-knative.md)).
 
-> **Screenshot owed (2026-08-20):** KEDA moving the predictor from 2 to 3
-> replicas under load. [`images/README.md`](images/README.md), image 7.
+![KEDA sets spec.replicas to 3; the third pod is Pending](images/07-keda-scale-up.png)
+
+*Captured 2026-08-20 06:14:49Z under real load. **Read the third pod's STATUS.**
+KEDA scaled the Deployment to 3 and the third replica is `Pending` on node
+`<none>`: `maxReplicaCount: 3` and `maxSkew: 1` with `DoNotSchedule` cannot both
+hold on two worker nodes. [`docs/STATUS.md`](../STATUS.md), finding 1.*
 
 ## 6.4 Git to cluster
 

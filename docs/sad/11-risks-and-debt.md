@@ -63,9 +63,19 @@ Full record: [ADR 0007](../adr/0007-failover-not-expressible-in-gateway-api.md).
 | R5 | **The CoreDNS manifest replaces kind's whole Corefile** | Only safe while the node image stays digest-pinned | Read [`docs/deployment-walkthrough.md`](../deployment-walkthrough.md) before bumping `kubernetes.kind_node` |
 | R6 | **Istio's inference-extension support is alpha**, and its own task page demonstrates sidecar mode rather than ambient | Phase 3 depends on it | The cost falls entirely in phase 3. The gateway is confined to `platform/10-istio/` and Kuadrant runs on either gateway, so [ADR 0003](../adr/0003-gateway-istio-ambient.md) stays reversible |
 
+| R7 | **The auth layer fails open into 500 under concurrency.** Authorino returns gRPC 14 `UNAVAILABLE`, which the gateway renders as HTTP 500, on both the reject path and the accept path | Measured 2026-08-20 under real load: `task chat` failed 3 of 3, and 6 of 10 requests with a valid token returned 500. Recovers when load stops | None yet. It fails closed, never 200 without a token, so it is a reliability defect and not a security hole. `docs/STATUS.md`, "The first load test", finding 2 |
+| R8 | **`maxReplicaCount: 3` and `maxSkew: 1` contradict each other on two worker nodes.** KEDA scales to 3 and the third pod can never schedule | Measured 2026-08-20: `0/3 nodes are available: 1 node(s) had untolerated taint(s), 2 node(s) didn't match pod topology spread constraints`. And `tests/smoke/07-autoscaling.bats` asserts `.spec.replicas -gt 2`, so it passes anyway | None yet. Three options exist and each is a design decision: a third worker, a lower `maxReplicaCount`, or `ScheduleAnyway`, which the availability tests forbid |
+| R9 | **CI is flaky in the `observability` job** | Two red runs on 2026-08-20, both from documentation-only commits, each for a different race: recording rules not yet evaluated, and the KServe webhook not yet serving | None yet. Recorded rather than retried, because a green retry would hide it |
+
 R1 and R2 are the two to internalise. Both produced a system that reported
 success while being broken, and neither was visible from the imperative install
 path.
+
+R7, R8, and R9 all came from a single afternoon of putting the stack under load
+for the first time, on 2026-08-20. **None of them was visible from a run that
+brings the stack up and asks it one question**, which is what every earlier run
+did. R8 in particular is the same shape as the defects this repository already
+collects: a test that passes while the thing it names is broken.
 
 ## Accepted debt
 

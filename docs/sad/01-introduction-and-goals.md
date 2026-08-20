@@ -80,7 +80,7 @@ graph LR
 ## How success is measured
 
 Nine acceptance criteria, each settled by one command. They are the definition
-of "phase 1 works", and five of nine held as of 2026-08-20.
+of "phase 1 works", and four of nine held as of 2026-08-20.
 
 [10-quality-requirements](10-quality-requirements.md) carries the table with each
 criterion's status, its command, and its date.

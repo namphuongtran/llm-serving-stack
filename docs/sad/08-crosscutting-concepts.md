@@ -83,9 +83,18 @@ panel names an engine.
 That last row is an accepted gap, not an owed measurement. Nothing closes it
 short of adding vLLM.
 
-> **Screenshot owed (2026-08-20):** the Grafana dashboard with real traffic, and
-> the Prometheus targets page. [`images/README.md`](images/README.md), images 2
-> and 9.
+![The LLM serving dashboard under real traffic](images/02-grafana-dashboard.png)
+
+*Captured 2026-08-20 under 64 streaming requests at concurrency 8. TTFT p95
+reached about 57s under that load, requests waiting peaked at 5, and the
+"Not available on this engine" panel is deliberately text: an empty graph is
+indistinguishable from a broken one.*
+
+![Prometheus targets, llm-predictors 3/3 up](images/09-prometheus-targets.png)
+
+*Captured 2026-08-20. `podMonitor/observability/llm-predictors/0` is 3/3 up: two
+`ornith-9b` replicas and the `fallback-small` predictor, all scraped on port
+8080.*
 
 ## 8.3 Admission policy
 

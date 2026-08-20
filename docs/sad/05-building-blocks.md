@@ -71,8 +71,11 @@ gateway serves unauthenticated traffic while every Application reports green.
 source, and `clusters/local-kind/verify-serving.sh` is the assertion that would
 catch it anyway.
 
-> **Screenshot owed (2026-08-20):** the Argo CD UI with all sixteen Applications
-> `Synced` and `Healthy`. See [`images/README.md`](images/README.md), image 1.
+![Argo CD Applications list, sidebar reading Synced 16](images/01-argocd-applications.png)
+
+*Captured 2026-08-20. The sidebar counter is the evidence, not the tiles.
+Remember that all sixteen were green on 2026-08-20 while the gateway served
+`/v1/models` to a caller with no token.*
 
 ## Level 3: inside namespace `llm`
 

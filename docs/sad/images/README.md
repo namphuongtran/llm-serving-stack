@@ -1,91 +1,96 @@
-# Screenshots this document owes
+# Screenshots
 
-Ten images belong in the [Software Architecture Document](../README.md). **None
-exists yet**, because every one of them can only be captured from a running
-cluster.
+Ten images belong in the [Software Architecture Document](../README.md).
+**Seven exist, captured 2026-08-20 from a real cluster. Three do not, and each
+one says why.**
 
-This file is the work list. Each row names the command that produces the image,
-the file name to save it under, and the document that will embed it.
+## How these were produced, because it changes how you should read them
 
-> **Screenshot owed (2026-08-20):** all ten. Capture them after
-> `task local:up` succeeds and `bats tests/` has run, then replace the marker in
-> each document with the image.
+Two different methods, and the difference matters:
 
-## Before you start
+| Method | Images | What it means |
+|---|---|---|
+| **Headless browser** against the live UI | 1, 2, 8, 9 | A real screenshot of the real page, taken with Playwright and Chromium against a port-forward (or, for 8, against github.com) |
+| **Rendered terminal capture** | 4, 6, 7 | The command was run for real and its output captured to a file. That file is then rendered as a terminal window. **The text is never edited** - it is the verbatim output, laid out in a monospace frame so it reads at screenshot size |
 
-```bash
-task preflight
-task local:up
-task test:smoke
-```
+Neither method invents anything. If you need to re-check a claim in one of these
+images, run the command beside it rather than trusting the picture.
 
-Save every image as PNG in this directory, using the file name in the table.
-Crop to the relevant panel or terminal region. Do not include a token, a
-password, or a `kubeconfig` path in the frame.
+## What exists
 
-## The ten images
-
-| # | File name | Shows | Embedded in |
+| # | File | Shows | Captured |
 |---|---|---|---|
-| 1 | `01-argocd-applications.png` | All sixteen Argo CD Applications `Synced` and `Healthy` | [05-building-blocks](../05-building-blocks.md) |
-| 2 | `02-grafana-dashboard.png` | The "LLM serving" dashboard under real traffic | [08-crosscutting-concepts](../08-crosscutting-concepts.md) |
-| 3 | `03-chat-streaming.png` | `task chat` streaming an answer through the gateway | [06-runtime-view](../06-runtime-view.md) |
-| 4 | `04-401-then-200.png` | 401 with no token, then 200 with a real JWT | [06-runtime-view](../06-runtime-view.md) |
-| 5 | `05-429-quota.png` | 429 after the free tier's budget is spent | [06-runtime-view](../06-runtime-view.md) |
-| 6 | `06-replicas-two-nodes.png` | Two predictor replicas on two different nodes | [07-deployment-view](../07-deployment-view.md) |
-| 7 | `07-keda-scale-up.png` | KEDA moving the predictor from 2 to 3 replicas | [06-runtime-view](../06-runtime-view.md) |
-| 8 | `08-ci-green.png` | Four green CI jobs on `ubuntu-24.04-arm` | [10-quality-requirements](../10-quality-requirements.md) |
-| 9 | `09-prometheus-targets.png` | Prometheus scraping the predictor's `/metrics` | [08-crosscutting-concepts](../08-crosscutting-concepts.md) |
-| 10 | `10-bench-summary.png` | `bench/summarise.py` output for one scenario | [10-quality-requirements](../10-quality-requirements.md) |
+| 1 | `01-argocd-applications.png` | Argo CD Applications list. Sidebar reads `Synced 16` | 2026-08-20 |
+| 2 | `02-grafana-dashboard.png` | The "LLM serving" dashboard under real traffic: TTFT p50/p95, requests waiting and running, throughput, batching, context high-watermark | 2026-08-20 |
+| 4 | `04-401-then-200.png` | 401 with no token, 401 with a forged token, 200 with a real JWT serving `ornith-9b` | 2026-08-20 |
+| 6 | `06-replicas-two-nodes.png` | Two predictor replicas on two different nodes, PDB allowing 1 disruption, both `InferenceService` objects Ready | 2026-08-20 |
+| 7 | `07-keda-scale-up.png` | KEDA scaling on queue depth. **Read the third pod's STATUS** | 2026-08-20 06:14:49Z |
+| 8 | `08-ci-runs.png` | The CI run history: nine runs, five green and four red | 2026-08-20 |
+| 9 | `09-prometheus-targets.png` | Prometheus scraping `llm-predictors` 3/3 UP, plus the gateway and Tempo | 2026-08-20 |
+
+Two of these are not the picture the plan asked for, and both are kept as they
+came out:
+
+- **Image 7 does not show a successful scale-up.** KEDA set `spec.replicas: 3`,
+  and the third pod is `Pending` on node `<none>`. It can never schedule:
+  `maxReplicaCount: 3` and `maxSkew: 1` with `DoNotSchedule` cannot both hold on
+  two worker nodes. The image is evidence of a real finding rather than of the
+  feature working. [`docs/STATUS.md`](../../STATUS.md), "The first load test",
+  has the scheduler's own message.
+- **Image 8 was named `08-ci-green.png` in the plan, and it is not green.** Four
+  of the nine runs failed. It was renamed rather than retaken, because retaking
+  it until it looked green is the exact thing this repository forbids.
+
+## What does not exist, and why
+
+| # | File | Blocked by |
+|---|---|---|
+| 3 | `03-chat-streaming.png` | `tools/chat.sh` returned `Internal Server Error.` on **6 of 6** attempts spread over 20 minutes. Not a scripting problem: Authorino logged `UNAVAILABLE` (gRPC 14) at the matching timestamps, which the gateway renders as HTTP 500. See finding 2 in [`docs/STATUS.md`](../../STATUS.md) |
+| 5 | `05-429-quota.png` | The free tier is 500 tokens per 60s and llama.cpp reports 0.55 tokens/s here, so the quota is out of reach locally. A long prompt should have reached it, because the counter reads `usage.total_tokens` and prompt tokens count too. That attempt hit the same HTTP 500 as image 3 |
+| 10 | `10-bench-summary.png` | `bench/run.sh` was still running when this file was written. It also generated the load that produced the 500s above, which is itself a finding |
+
+**These three are not "todo later" items.** Two of them are blocked by a defect
+this repository now has a record of, and one is blocked by a limit it already
+documented. Capturing them requires fixing or waiting out finding 2, not trying
+harder with a screenshot tool.
 
 ## The commands
 
-### 1. Argo CD, sixteen Applications green
+Every image below can be reproduced. Run the command, then capture.
 
-Argo CD's UI is never exposed through the gateway in phase 1, so reach it with a
-port-forward. `server.insecure=true` is set for exactly this reason.
+### 1. Argo CD
 
 ```bash
 kubectl -n argocd port-forward svc/argocd-server 8080:80 &
 kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 -d; echo
-# open http://127.0.0.1:8080, user 'admin', paste the password
-```
-
-Capture the Applications list with every tile `Synced` and `Healthy`. A terminal
-alternative, if the UI is unavailable:
-
-```bash
-kubectl -n argocd get applications -o wide
+# open http://127.0.0.1:8080, user 'admin'
 ```
 
 **Read the caption you write carefully.** All sixteen were green on 2026-08-20
 while the gateway served `/v1/models` to a caller with no token. The image proves
 Argo CD is satisfied; it does not prove the platform works.
 
-### 2. Grafana, the LLM serving dashboard
+### 2. Grafana
 
 ```bash
 kubectl -n observability port-forward svc/kube-prometheus-stack-grafana 3000:80 &
-# open http://127.0.0.1:3000, user 'admin', password 'admin'
-# dashboard: "LLM serving"
+# http://127.0.0.1:3000, admin/admin, dashboard "LLM serving"
 ```
 
-Generate traffic first, or every panel is empty:
-
-```bash
-for i in 1 2 3 4 5; do task chat -- "Write two sentences about sync waves."; done
-```
-
-The panels worth having in frame are "Do users experience it as slow? TTFT p50
-and p95", "Are we about to saturate? requests waiting and running", and
-"Throughput: output tokens per second".
+Generate traffic first or every panel is empty. Allow the panels a full minute to
+render: a first attempt at 15 seconds produced a screenshot with every panel
+blank and the query spinner still turning, which would have been mistaken for a
+broken dashboard.
 
 ### 3. A streaming answer
 
 ```bash
 task chat -- "Explain sync waves in two sentences."
 ```
+
+Currently returns `Internal Server Error.` under any concurrent load. Note that
+`tools/chat.sh` **exits 0** when it does, which is a defect in the script.
 
 ### 4. 401, then 200
 
@@ -96,72 +101,59 @@ curl -s -o /dev/null -w '%{http_code}\n' --max-time 30 \
   -H "authorization: Bearer $TOKEN" http://llm.localtest.me/v1/models
 ```
 
-Use `./tools/token.sh` rather than `task token` when capturing into a variable.
-The script prints one token on stdout and nothing else; `task` adds its own
-lines around it.
+Use `./tools/token.sh`, not `task token`: the script prints one token on stdout
+and nothing else. **Never put the token itself in the frame.**
 
-Expect `401` then `200`. **Do not put the token itself in the frame.**
-
-### 5. 429, quota exceeded
+### 5. 429
 
 ```bash
 CLIENT=llm-tier-free task chat -- "Write a long answer about Kubernetes."
 ```
 
-The free tier is 500 tokens per 60-second window. On the local engine llama.cpp
-reports 0.55 tokens per second, which is 33 tokens per window, so **this may not
-reproduce locally**. If it does not, capture it from the CI job's log instead and
-name the run in the caption. That limitation is measured, not a bug; see
-[`docs/STATUS.md`](../../STATUS.md).
+If it does not reproduce, capture it from the CI job's log instead and name the
+run in the caption.
 
 ### 6. Two replicas, two nodes
 
 ```bash
 kubectl -n llm get pods -l serving.kserve.io/inferenceservice=ornith-9b -o wide
+kubectl -n llm get pdb ornith-9b
 ```
 
-The `NODE` column must show two different workers. If both are on one node, the
-`topologySpreadConstraints` are not doing their job and the image would record a
-defect rather than the design.
+The `NODE` column must show two different workers.
 
-### 7. KEDA scaling up
+### 7. KEDA scaling
 
 ```bash
-kubectl -n llm get scaledobject,hpa,deploy/ornith-9b-predictor -w
+kubectl -n llm get scaledobject,hpa,deploy/ornith-9b-predictor
 ```
 
-Put it under load in a second terminal:
+Under load in a second terminal:
 
 ```bash
 SCENARIOS=bench/scenarios/04-concurrency-sweep.json ./bench/run.sh
 ```
 
-Capture the moment `READY` moves from `2/2` to `3/3`.
+Check `kubectl -n llm describe pod <the new one>` before believing a scale-up:
+`spec.replicas` reaching 3 is not the same as a third pod serving traffic.
 
-### 8. CI green
+### 8. CI runs
 
 ```bash
-gh run list --limit 5
-gh run view <run-id>
+gh run list --branch main --limit 10
 ```
 
-Capture the four jobs `lint`, `policy`, `smoke`, and `observability` on
-`ubuntu-24.04-arm`. Include the run number in the caption, because a CI result is
-a dated measurement.
+Include the run numbers in the caption. A CI result is a dated measurement.
 
-### 9. Prometheus scraping the predictor
+### 9. Prometheus targets
 
 ```bash
 kubectl -n observability port-forward svc/kube-prometheus-stack-prometheus 9090:9090 &
-# open http://127.0.0.1:9090/targets and find the PodMonitor target for ornith-9b
+# http://127.0.0.1:9090/targets
 ```
 
-A useful second frame, showing normalisation actually working:
-
-```bash
-curl -s --get http://127.0.0.1:9090/api/v1/query \
-  --data-urlencode 'query=llmstack:requests_waiting' | jq .
-```
+Use `waitUntil: 'domcontentloaded'` if you script this. The page polls forever,
+so `networkidle` never fires and the capture times out.
 
 ### 10. Benchmark summary
 
@@ -173,13 +165,12 @@ python3 bench/summarise.py bench/results/<dated-directory>
 Include the date directory name in the frame. **A benchmark number without its
 date is invalid** in this repository, and a screenshot is no exception.
 
-## When you have them
+## When you capture a missing one
 
-1. Save each PNG here with the file name from the table.
-2. In the document that owns it, replace the
-   `> **Screenshot owed (2026-08-20):**` line with the image and a caption
-   carrying the date it was captured.
-3. Delete that row from this table.
-4. If an image cannot be produced, say why here, in this file, with the date. Do
-   not remove the row silently: a missing image with a stated reason is a record,
-   and a removed one is amnesia.
+1. Save the PNG here under the file name in the table.
+2. Replace the `> **Screenshot owed (2026-08-20):**` line in the document that
+   owns it with the image and a caption carrying the capture date.
+3. Move its row from "does not exist" to "what exists".
+4. If it still cannot be produced, update the reason with today's date. Do not
+   remove the row: a missing image with a stated reason is a record, and a
+   removed one is amnesia.

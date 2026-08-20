@@ -26,15 +26,23 @@ a streaming chat completion. Argo CD reached the same working service from git
 on 2026-08-20. `docs/deployment-walkthrough.md` is the account, with every number
 dated, and `tools/step-up.sh` is how to repeat it one layer at a time.
 
-**Five of the nine phase 1 acceptance criteria now hold, and the four that do
-not have all never been run.** No criterion is failing. The table under "What is
+**Four of the nine phase 1 acceptance criteria hold as of 2026-08-20**, and the
+count moved twice in one day, in both directions. The table under "What is
 unproven" says which is which.
 
-Two moved on 2026-08-20, both re-measured rather than reasoned about. Criterion 9
-went from failing to holding when CI turned green: `gh run list --branch main`
-shows seven runs ever, the first three red and the last four green. Criterion 1
-went from "not settled" to holding on run 4 of the pull path, timed at
-**17 minutes 9 seconds**, exit 0, with no manual step.
+**Criterion 1 now holds.** Run 4 of the pull path took a deleted cluster to a
+ready service in **17 minutes 9 seconds**, exit 0, with no manual step, and the
+request path was checked independently of the script that reported it.
+
+**Criterion 9 no longer holds, and this file claimed it did for two commits.**
+Four consecutive CI runs were green, which is what that claim was measured on.
+The next two runs were red, both in the `observability` job, and both were
+triggered by documentation-only commits that cannot have broken it. The honest
+status is **flaky**, not holding. See "Criterion 9" below for both failures.
+
+The rule this breaks is the repository's own: four green samples is a
+measurement, and "holds" is a claim about the future that four samples did not
+support. The correction is recorded here rather than applied quietly.
 
 Running it is what found the defects, and static review did not. The first run
 found seven that four separate review passes over the whole repository had all
@@ -71,6 +79,122 @@ Each defect is recorded where it was found.
 - **Unverified by construction.** Phase 1's own acceptance bar, which cannot
   be met until the suite runs once, end to end.
 
+## The first load test, 2026-08-20, and the three things it found
+
+The stack had never been put under sustained load. On 2026-08-20, after criterion
+1 was settled, 64 streaming requests were sent through the gateway at concurrency
+8 over about 7 minutes. The engine has 2 slots per replica and 2 replicas, so 4
+in flight and 4 deferred, which is above the `ScaledObject` threshold of 2.
+
+Nothing here is a reason to stop. All three are recorded because none of them was
+visible from a run that only brings the stack up and asks it one question.
+
+### 1. KEDA scales to three, and the third replica can never schedule
+
+KEDA did its job. Under load, queue depth reached 5 and the HPA read
+`1667m/2 (avg)`, so it set `spec.replicas: 3`. The third pod never ran:
+
+```
+ornith-9b-predictor-...-6qsrg   2/2   Running   llm-serving-stack-worker
+ornith-9b-predictor-...-bhtcp   2/2   Running   llm-serving-stack-worker2
+ornith-9b-predictor-...-gk8v2   0/2   Pending   <none>
+
+0/3 nodes are available: 1 node(s) had untolerated taint(s),
+2 node(s) didn't match pod topology spread constraints.
+```
+
+This is arithmetic, not a transient. The cluster has three nodes; the
+control-plane is tainted, leaving two schedulable. `topologySpreadConstraints`
+uses `maxSkew: 1` with `DoNotSchedule` on `kubernetes.io/hostname`. Two replicas
+sit one per worker, so a third would make the skew 2 and is refused.
+**`maxReplicaCount: 3` and `maxSkew: 1` cannot both be satisfied on two worker
+nodes.** Nothing in this repository records that the two settings contradict each
+other.
+
+**And `tests/smoke/07-autoscaling.bats` would pass.** It asserts
+`.spec.replicas -gt 2`, which is the number KEDA writes, not the number of pods
+that serve traffic. The desired count went to 3 and `readyReplicas` stayed at 2.
+That is the same shape as the three tests this repository already records as
+passing while the thing they named was broken.
+
+Three ways to resolve it, none applied yet, because choosing one is a design
+decision rather than a fix: add a third worker to `prereqs/kind-cluster.yaml`;
+lower `maxReplicaCount` to 2, which makes the autoscaler pointless; or relax the
+spread constraint to `ScheduleAnyway`, which is what
+`models/ornith-9b/overlays/local/patch-resources.yaml` deliberately refused,
+because the availability tests depend on the replicas being on different nodes.
+
+### 2. Under load, the gateway returns 500 on both paths
+
+The auth layer degrades under concurrency, and it degrades in both directions:
+a request with no token stops getting 401, and a request with a valid token
+stops getting 200. Both become HTTP 500.
+
+Measured 2026-08-20, twenty requests per row unless stated:
+
+| When | No token | Valid pro token |
+|---|---|---|
+| Under sustained load, 06:14Z to 06:22Z | 500 x5 then 401 x15 | **500 x6 of 10** |
+| Quiet, 06:32Z | 401 x18, **500 x2** | 200 x20 |
+| Under benchmark load, 06:35Z | not sampled | `task chat` failed **3 of 3** |
+
+The last row is the cleanest evidence, because it was not looking for this:
+`bench/run.sh` was running one scenario, and three consecutive `tools/chat.sh`
+calls returned `Internal Server Error.` Authorino logged `UNAVAILABLE` at
+06:35:20Z, 06:35:22Z, and 06:35:23Z, which is those three requests.
+
+It recovers on its own when the load stops.
+
+The cause is in Authorino's own log, not inferred:
+
+```
+"authorized":false,"response":"UNAVAILABLE","object":{"code":14}
+
+logger authorino...authconfig.jwt
+msg "failed to discovery openid connect configuration"
+issuerUrl "http://llm.localtest.me/realms/llm"
+```
+
+gRPC code 14 is `UNAVAILABLE`, which the gateway renders as HTTP 500. A denial
+would be code 16, `UNAUTHENTICATED`, which renders as 401. So **OIDC discovery
+against Keycloak is a runtime dependency of the reject path, not only of the
+accept path**: when Authorino cannot load the issuer's configuration, a request
+carrying no token at all gets 500 rather than 401.
+
+**This is not a security hole.** It never returns 200 without a token; it fails
+closed. But criterion 3 asks for 401, and `clusters/local-kind/verify-serving.sh`
+asserts 401, so a `task local:up` that finished during one of these windows would
+fail on a healthy platform. That is the correct behaviour for the check and a
+real source of flakiness for the criterion.
+
+One tooling defect found beside it: `tools/chat.sh` printed
+`Internal Server Error.` and **exited 0**.
+
+### 3. Eighteen containers restarted, including the control plane
+
+During the load, at 06:14:53Z and within a few minutes of it, eighteen containers
+restarted across the cluster, among them `kube-scheduler`,
+`kube-controller-manager`, four Kuadrant operators, four Kyverno controllers, and
+the Argo CD repo-server. Most exited 0 (`Completed`), some exited 1 (`Error`);
+none reported `OOMKilled`, and no node reported `MemoryPressure`.
+
+Memory across the three node containers, measured with `docker stats`:
+
+| When | Total | % of 23.2 GiB |
+|---|---|---|
+| Before load, 06:03Z | 18407 MiB | 77 |
+| After load, 06:22Z | 19574 MiB | 82 |
+| Later, 06:32Z | 19902 MiB | 84 |
+
+**No cause is asserted here.** Eighteen simultaneous restarts under load, with
+memory climbing, is a symptom worth recording and not a diagnosis. What is
+established is the correlation and the timestamps; what is owed is the cause.
+
+> **Unmeasured (2026-08-20):** why eighteen containers restarted within minutes
+> of each other under load. Re-run the load with
+> `kubectl get events -A --sort-by=.lastTimestamp -w` captured to a file, and
+> read the reasons rather than inferring them from restart counts.
+
 ## What is unproven
 
 The single most important section of this file. One run on 2026-08-19 settled two
@@ -80,20 +204,21 @@ so what follows is not a formality.
 ### The nine phase 1 acceptance criteria
 
 Two held on 2026-08-19. Three on 2026-08-20, then four when CI went green, then
-five when the pull path came up clean. Settle the rest with `bats tests/` against
-a live cluster, then record the result and the date here.
+five when the pull path came up clean, then four again when CI went red twice.
+Settle the rest with `bats tests/` against a live cluster, then record the result
+and the date here.
 
 | # | Criterion | Status | Settle it |
 |---|---|---|---|
 | 1 | `task local:up` takes an empty machine to a ready service | **HOLDS 2026-08-20**, on run 4. Exit 0 in 17m09s, sixteen Applications green, 401 without a token and a streamed answer with one, no manual step | `task local:down && task local:up` |
 | 2 | A JWT obtained from Keycloak returns a streamed chat completion | **HOLDS 2026-08-19** | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
-| 3 | A request without a JWT is rejected with 401 | **HOLDS 2026-08-19** | `bats tests/smoke/06-auth-quota.bats` |
+| 3 | A request without a JWT is rejected with 401 | **HOLDS 2026-08-19** on an idle cluster. **Degrades under sustained load**: 2 of 20 returned 500, measured 2026-08-20 06:32Z. Never 200 | `bats tests/smoke/06-auth-quota.bats` |
 | 4 | Exceeding the token quota returns 429 | **HOLDS 2026-08-20**, in CI. Not reachable on the local engine, see below | `bats tests/smoke/06-auth-quota.bats` |
 | 5 | Grafana shows TTFT p95 and requests waiting from real traffic | untested | `bats tests/smoke/05-observability.bats` |
-| 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | untested | `bats tests/smoke/07-autoscaling.bats` |
+| 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | **partly, and the test would pass anyway.** KEDA set `spec.replicas: 3` under real load 2026-08-20, and the third pod **can never schedule on this cluster**. See "The first load test" below | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, PDB holding | untested | `bats tests/smoke/08-availability.bats` |
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
-| 9 | CI is green on an arm64 runner | **HOLDS 2026-08-20.** Four consecutive green runs, all four jobs each. First green run `32323568376`; latest `32326772197` | `gh run list`, after a push to `main` or a pull request |
+| 9 | CI is green on an arm64 runner | **FLAKY 2026-08-20**, and this row said HOLDS for two commits. Four green runs, then two red, both in `observability` and each for a different race | `gh run list`, after a push to `main` or a pull request |
 
 Criterion 1 is the one to read carefully, and it took four runs.
 
@@ -226,10 +351,34 @@ had. Read with `gh run list --branch main`, 2026-08-20:
 | 32324328098 | 2026-08-20 02:21 | `0a4bef5` | **success** |
 | 32326772197 | 2026-08-20 03:02 | `891b255` | **success** |
 
-Seven runs, the first three red and the last four green, with all four jobs
-green in each of the four. The runner is arm64, which the criterion asks for:
-`Image: ubuntu-24.04-arm`, image release `ubuntu24-arm64/20260817.96`, read out
-of run `32326772197`'s own log rather than out of the workflow file.
+| 32336384415 | 2026-08-20 05:38 | `b5b2976` | **failure** |
+| 32338396051 | 2026-08-20 06:07 | `0268848` | **failure** |
+
+Nine runs: three red, four green, two red. The runner is arm64, which the
+criterion asks for: `Image: ubuntu-24.04-arm`, image release
+`ubuntu24-arm64/20260817.96`, read out of run `32326772197`'s own log rather than
+out of the workflow file.
+
+**The last two failures are the reason this criterion no longer holds, and they
+are worth reading carefully.** Both were triggered by documentation-only commits,
+which cannot break a cluster job. In both, `lint`, `policy`, and `smoke` passed
+and only `observability` failed, and the two failed for different reasons:
+
+| Run | Failure | Why it is a race, not a defect |
+|---|---|---|
+| `32336384415` | Tests 12 and 13, `prometheus is scraping the predictor` and `normalised llmstack series exist`, both on `[ "$output" -ge 1 ]` | Test 14, `raw engine series backing the normalisation still exist`, **passed in the same run**, as did test 17 on the gateway. The raw series were there and the recording rules had not produced their output yet. 22 of 24 tests passed |
+| `32338396051` | The `Deploy the CI model` step: `failed calling webhook "servingruntime.kserve-webhook-server..."`, `Internal error occurred` | The KServe admission webhook was not serving yet when the step applied the model. Nothing waits for it |
+
+Neither is a platform failure. Both are the same class the CI section already
+warns about: a step that assumes something is ready without waiting for it. They
+are recorded here rather than retried until green, because a flaky job is a
+finding and a green retry would hide it.
+
+**What this cost.** Two commits of this repository asserted that criterion 9
+holds. It did, on the four samples taken. It stopped holding on the next push,
+and the claim was written in a form that four samples could not support. The fix
+is not to re-run CI until it is green; it is to stop writing "holds" from a
+sample that small.
 
 **What the three red runs were, because the failures matter more than the
 count.** `lint` and `policy` passed in all of them. The other two jobs each

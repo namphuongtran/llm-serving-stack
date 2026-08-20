@@ -94,15 +94,18 @@ Every choice has an ADR in [`docs/adr/`](docs/adr/) with the evidence behind it.
 
 ## Status
 
-**Run for the first time on 2026-08-19.** Five of the nine phase 1 acceptance
-criteria hold, and the four that do not have all simply never been run. Nothing
-is failing.
+**Run for the first time on 2026-08-19.** Four of the nine phase 1 acceptance
+criteria hold as of 2026-08-20, and the count moved in both directions that day.
 
-`task local:down && task local:up` took an empty cluster to a ready service on
-2026-08-20 in **17 minutes 9 seconds**, exit 0, with no manual step: sixteen
-Argo CD Applications green, 401 without a token, and a streamed answer with one.
-CI ran for the first time the same day, failed three times, and has been green
-for four consecutive runs since.
+`task local:down && task local:up` took an empty cluster to a ready service in
+**17 minutes 9 seconds**, exit 0, with no manual step: sixteen Argo CD
+Applications green, 401 without a token, and a streamed answer with one.
+
+Then the stack was put under load for the first time, and that found three
+things worth more than the criteria count: KEDA scales to a third replica that
+**can never schedule**, the gateway returns **500 instead of 401 or 200 under
+concurrency**, and CI went red twice on documentation-only commits. All three
+are in [`docs/STATUS.md`](docs/STATUS.md).
 
 Eighteen defects came out of those runs, and static review had missed all of
 them. That is the point of the next link.
