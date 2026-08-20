@@ -29,8 +29,15 @@ TOKEN="$(./tools/token.sh "$CLIENT")"
 
 # Path from models/ornith-9b/overlays/local/httproute.yaml, whose only rule is
 # a PathPrefix match on /v1. bench/harness.py posts to the same URL.
+# stream_options.include_usage is not optional here, for two reasons measured
+# on a live cluster 2026-08-20. Without it the response carries no `usage`, so
+# Kuadrant counts nothing against the quota, and the shim holds the connection
+# open long after the answer is complete. R21 and R22 in
+# docs/sad/11-risks-and-debt.md carry the numbers. bench/harness.py already set
+# it; this file, the TTFT prober, the recovery drill, and the availability test
+# did not.
 BODY="$(jq -n --arg m "$MODEL" --arg p "$PROMPT" \
-  '{model:$m, stream:true, messages:[{role:"user", content:$p}]}')"
+  '{model:$m, stream:true, stream_options:{include_usage:true}, messages:[{role:"user", content:$p}]}')"
 
 echo "> $PROMPT" >&2
 echo "  (client $CLIENT, model $MODEL, via $BASE)" >&2
@@ -43,7 +50,12 @@ echo >&2
 # Anything that is not an SSE data line goes to stderr rather than being
 # dropped, so an auth failure or a Kuadrant rate-limit body is visible instead
 # of the command simply printing nothing.
-curl -sN -X POST "$BASE/v1/chat/completions" \
+# --max-time 600, because this repository's own CI lesson is that every request
+# needs one and this call had none. It is generous on purpose: the answer is
+# generated at this engine's speed, and a 700-token prompt with no max_tokens ran
+# past eight minutes on 2026-08-21. That was generation, not a hang, and an
+# unbounded curl could not tell the difference. R23.
+curl -sN --max-time 600 -X POST "$BASE/v1/chat/completions" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "$BODY" \

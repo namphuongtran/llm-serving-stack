@@ -39,7 +39,7 @@ setup() {
   token=$(get_token llm-tier-pro)
   ( curl -sfN "$BASE/v1/chat/completions" \
       -H "authorization: Bearer $token" -H 'content-type: application/json' \
-      -d '{"model":"ornith-9b","messages":[{"role":"user","content":"Count slowly to twenty."}],"max_tokens":400,"stream":true}' \
+      -d '{"model":"ornith-9b","messages":[{"role":"user","content":"Count slowly to twenty."}],"max_tokens":400,"stream":true,"stream_options":{"include_usage":true}}' \
       > /tmp/stream.out ) &
   stream_pid=$!
   sleep 3

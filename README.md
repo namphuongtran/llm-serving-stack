@@ -176,8 +176,20 @@ gateway, so one command exercises the route, the `AuthPolicy`, and the
 
 ```bash
 task chat -- "Explain sync waves in two sentences."
-CLIENT=llm-tier-free task chat    # spend the free tier's budget and watch the 429
+CLIENT=llm-tier-free task chat -- "<a prompt of 500 tokens or more>"   # then run it again for the 429
 ```
+
+The second line carried no prompt and promised a 429 until 2026-08-21, and it
+could not deliver one for two separate reasons. `tools/chat.sh` streams, and a
+streamed response that does not ask for `stream_options.include_usage` reports no
+`usage`, so Kuadrant counted it as zero (R21, now fixed in that script). And the
+free tier's budget is 500 tokens per 60 seconds, which a short prompt does not
+come close to spending on one call.
+
+Expect the first call to be slow. `task chat` sets no `max_tokens`, so the model
+answers in full at this engine's speed, and a 700-token prompt ran past eight
+minutes on 2026-08-21. The 429 arrives on the call after it, inside the same
+60-second window.
 
 To bring the stack up one layer at a time with a memory guard, use
 `./tools/step-up.sh`. [`docs/deployment-walkthrough.md`](docs/deployment-walkthrough.md)

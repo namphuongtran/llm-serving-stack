@@ -119,6 +119,16 @@ require_token() {
   #
   # security/oidc/tokenratelimitpolicy.yaml gives the free tier 500 tokens per
   # 60s window, and the counter only advances once a response reports its usage.
+  #
+  # The paragraph below concluded from that this test can never pass on this
+  # engine. It is wrong twice over, and both corrections are measured.
+  # `usage.total_tokens` is prompt plus completion, so generation rate is only
+  # one way to spend the budget: docs/STATUS.md finding 4 spent it with one
+  # ~500-token prompt. And this test does not stream, which is what makes it the
+  # honest path: a streamed request that does not ask for
+  # stream_options.include_usage reports no usage at all and is counted as zero,
+  # measured 2026-08-20 (R21). The arithmetic below is still correct as
+  # arithmetic. Keep it, and do not reason from it to this test.
   # So the budget can only be exceeded if the stack generates more than 500
   # tokens in 60 seconds. It does not come close. llama.cpp's own timing log on
   # the local kind cluster, 2026-08-20:

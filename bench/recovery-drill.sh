@@ -87,7 +87,7 @@ stream_log="$OUT/first-stream.txt"
 curl -sN --no-buffer --max-time 900 "$BASE/v1/chat/completions" \
   -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
-  -d '{"model":"ornith-9b","messages":[{"role":"user","content":"Say hello."}],"max_tokens":16,"stream":true}' \
+  -d '{"model":"ornith-9b","messages":[{"role":"user","content":"Say hello."}],"max_tokens":16,"stream":true,"stream_options":{"include_usage":true}}' \
   > "$stream_log" 2>/dev/null &
 stream_pid=$!
 

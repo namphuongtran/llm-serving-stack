@@ -75,7 +75,7 @@ spec:
                     -H "Host: llm.localtest.me" \
                     -H "authorization: Bearer $TOKEN" \
                     -H 'content-type: application/json' \
-                    -d '{"model":"ornith-9b","messages":[{"role":"user","content":"ping"}],"max_tokens":8,"stream":true}' \
+                    -d '{"model":"ornith-9b","messages":[{"role":"user","content":"ping"}],"max_tokens":8,"stream":true,"stream_options":{"include_usage":true}}' \
                     "$GATEWAY/v1/chat/completions")
 
                   echo "ttft-prober: ${TTFT}s"
