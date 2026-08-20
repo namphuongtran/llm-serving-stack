@@ -370,10 +370,45 @@ Re-tested after both fixes, 2026-08-20:
 | stdin path with the webhook down, restored after 25s | retried **29 attempts over 58s**, then created, exit 0 |
 | `mktemp` template under GNU coreutils 9.7 | old form errors, new form works |
 
-> **Untried (2026-08-20):** whether this fixes CI. Five mutation tests pass
-> locally, across bash, zsh, and GNU coreutils, and no CI run has yet gone green
-> on the change. Criterion 9 stays flaky until a run proves otherwise; see
-> `gh run list --branch main`.
+### CI went green, and that is not evidence the fix works
+
+Run `32344494225` on `dde6587` passed all four jobs. Read the next paragraph
+before drawing the obvious conclusion.
+
+```
+07:35:23.1122  deployment "kserve-controller-manager" successfully rolled out
+07:35:23.3602  servingruntime.serving.kserve.io/llamacpp-arm64 created
+```
+
+**248 ms**, against the 194 ms that failed two runs earlier, and it succeeded on
+the first attempt. Searching the whole run for the helper's own retry messages:
+
+```
+"webhook not reachable yet"  0 occurrences
+"succeeded on attempt"       0 occurrences
+```
+
+**The race did not happen.** The retry branch, which is the entire point of the
+change, was never executed in CI. What this run proves is narrower than it
+looks:
+
+| Claim | Proven by this run? |
+|---|---|
+| The `mktemp` and `zsh` defects are fixed | **yes** - the step ran at all, which it could not before |
+| `apply_retry` is wired in and applies correctly | **yes**, on the happy path |
+| The retry rides out an unreachable webhook | **no** - proven locally by mutation, not here |
+| CI is reliably green | **no** - one sample, and the interesting branch was cold |
+
+The timing also refutes a tempting shortcut: 194 ms failed and 248 ms passed, so
+the gap alone does not decide it. What decides it is whether the endpoints were
+programmed at that instant, which no wall-clock threshold can predict. That is
+why the answer is a retry rather than a `sleep`.
+
+> **Untried (2026-08-20):** whether the retry branch works in CI. Five mutation
+> tests pass locally across bash, zsh, and GNU coreutils; CI has gone green once
+> without exercising it. Criterion 9 stays flaky. The evidence that would settle
+> it is a CI run whose log contains `apply_retry: ... succeeded on attempt N`
+> with N above 1, which cannot be forced and has to be waited for.
 
 **And the changed script could not be run end to end here**, which is a separate
 finding worth its own line. `./platform/12-kyverno/install.sh` on this cluster
@@ -417,7 +452,7 @@ and the date here.
 | 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | **partly, and the test would pass anyway.** KEDA set `spec.replicas: 3` under real load 2026-08-20, and the third pod **can never schedule on this cluster**. See "The first load test" below | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, PDB holding | untested | `bats tests/smoke/08-availability.bats` |
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
-| 9 | CI is green on an arm64 runner | **FLAKY 2026-08-20**, and this row said HOLDS for two commits. Four green runs, then two red, both in `observability` and each for a different race | `gh run list`, after a push to `main` or a pull request |
+| 9 | CI is green on an arm64 runner | **FLAKY 2026-08-20**, and this row said HOLDS for two commits. Four green, four red, then green again after the webhook race was fixed. The green run did not exercise the fix | `gh run list`, after a push to `main` or a pull request |
 
 Criterion 1 is the one to read carefully, and it took four runs.
 
