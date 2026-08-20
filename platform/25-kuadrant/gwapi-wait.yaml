@@ -27,22 +27,29 @@
 # This does NOT repair a cluster that is already in that state: the hook gates
 # a sync, it cannot restart a Deployment that synced earlier. On such a cluster,
 # run the restart the message asks for.
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: kuadrant-gwapi-wait
-  namespace: kuadrant-system
----
-# No Role, ClusterRole, or binding, and that is deliberate rather than an
-# omission. A first draft granted `get` on customresourcedefinitions, which the
-# discovery check below does not use. Reading /apis/* needs no grant at all:
-# the built-in ClusterRoleBinding `system:discovery` binds
-# Group/system:authenticated to nonResourceURLs ["/api","/api/*","/apis",
-# "/apis/*", ...] with verb get. Confirmed 2026-08-20 with
-#   kubectl auth can-i get /apis/gateway.networking.k8s.io/v1 \
-#     --as=system:serviceaccount:kuadrant-system:kuadrant-gwapi-wait
-# which answered `yes` against a cluster where this ServiceAccount had no
-# bindings of its own.
+# NO ServiceAccount, Role, or binding of its own, and both halves of that are
+# deliberate.
+#
+# No RBAC, because the discovery check below needs none. The built-in
+# ClusterRoleBinding `system:discovery` binds Group/system:authenticated to
+# nonResourceURLs ["/api","/api/*","/apis","/apis/*", ...] with verb get.
+# Confirmed 2026-08-20 with `kubectl auth can-i get
+# /apis/gateway.networking.k8s.io/v1 --as=system:serviceaccount:...`, which
+# answered `yes` for a ServiceAccount with no bindings at all.
+#
+# No ServiceAccount, because a PreSync hook cannot use one declared beside it.
+# This file did declare one, and the Job could not start:
+#   pods "kuadrant-gwapi-wait-" is forbidden: error looking up service account
+#   kuadrant-system/kuadrant-gwapi-wait: serviceaccount ... not found
+# Argo CD creates PreSync hooks BEFORE the sync phase, and a plain
+# ServiceAccount is a sync-phase resource, so the Job referenced something that
+# did not exist yet. Observed on a live cluster on 2026-08-20; `kubectl apply
+# --dry-run=server` and `sh -n` both passed on the broken version, because
+# neither knows about Argo CD's phases.
+#
+# The alternative is to annotate the ServiceAccount as a PreSync hook too, with
+# a lower sync-wave. That is more YAML for an identity that grants nothing, so
+# the pod runs as `default` in its own namespace instead.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -59,7 +66,6 @@ spec:
   template:
     spec:
       restartPolicy: Never
-      serviceAccountName: kuadrant-gwapi-wait
       containers:
         # curl and a shell, the same image and digest the istio hook uses. The
         # official kubectl image is distroless and has no shell, so this talks
