@@ -15,7 +15,7 @@ it is a wish.
 
 | # | Criterion | Status (2026-08-20) | Command that settles it |
 |---|---|---|---|
-| 1 | `task local:up` takes an empty machine to a ready service | not settled, after three runs | `task local:down && task local:up` |
+| 1 | `task local:up` takes an empty machine to a ready service | **holds** (2026-08-20), run 4, 17m09s, exit 0 | `task local:down && task local:up` |
 | 2 | A JWT obtained from Keycloak returns a streamed chat completion | **holds** (2026-08-19) | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
 | 3 | A request without a JWT is rejected with 401 | **holds** (2026-08-19) | `bats tests/smoke/06-auth-quota.bats` |
 | 4 | Exceeding the token quota returns 429 | **holds** (2026-08-20), in CI only | `bats tests/smoke/06-auth-quota.bats` |
@@ -25,15 +25,18 @@ it is a wish.
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
 | 9 | CI is green on an arm64 runner | **holds** (2026-08-20), four consecutive green runs | `gh run list` |
 
-Four of nine hold. The five that do not are not held up by the same thing:
-criterion 1 has run and failed, on a named defect, and the other four have never
-been run.
+Five of nine hold, and the four that do not have all simply never been run.
+Nothing is failing.
 
-**Criterion 9 turned green on 2026-08-20**, at run `32323568376`, and has stayed
-green for four runs. Both of its earlier failures were defects in tests, not in
-the platform: both cluster jobs had already built a real `kind` cluster and
-installed the whole platform successfully before failing. `docs/STATUS.md`
-carries the run table.
+Two moved on 2026-08-20. **Criterion 9** turned green at CI run `32323568376` and
+has stayed green for four runs; both earlier failures were defects in tests, not
+in the platform, because both cluster jobs had already built a real `kind`
+cluster and installed the whole platform before failing. **Criterion 1** was
+settled on run 4 of the pull path: 17 minutes 9 seconds, exit 0, sixteen
+Applications green, and a request path checked independently of the script that
+reported it. `docs/STATUS.md` carries both accounts, including the two container
+restarts that Kubernetes performed on its own and the three TTFT prober pods
+that failed while the model was still loading.
 
 **Criterion 4 needs a caveat that is a limits decision, not a test bug.** The
 free tier is 500 tokens per 60-second window, and llama.cpp reports 0.55 tokens
@@ -49,7 +52,7 @@ local engine. CI settles it with a much smaller model. Measured 2026-08-20.
 | **Availability** | A node is drained | Two replicas on two nodes, `PodDisruptionBudget` with `minAvailable: 1`, 120s grace and a 15s `preStop` | Criterion 7 untested |
 | **Elasticity** | The queue grows | KEDA scales on `llmstack:requests_waiting`, threshold 2, between 2 and 3 replicas | Criterion 6 untested |
 | **Observability** | An operator asks whether the service is keeping up | `llmstack:*` recording rules, a Grafana dashboard, and a client-side TTFT prober | Criterion 5 untested |
-| **Reproducibility** | The cluster is destroyed | Argo CD rebuilds from git; two things only are applied by hand | Criterion 1 not settled |
+| **Reproducibility** | The cluster is destroyed | Argo CD rebuilds from git; two things only are applied by hand | Criterion 1 holds, 17m09s |
 | **Recoverability** | Namespace `llm` is deleted | `task drill:recovery` measures time to the **first token**, not time to `Ready` | Criterion 8 untested |
 | **Portability** | The substrate changes | The same control plane, a different overlay | Untried: no GPU cluster exists |
 

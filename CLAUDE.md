@@ -36,7 +36,7 @@ What that run settles, and what it does not:
 
 - All thirteen layers came up on a 3-node `kind` cluster, and the service
   answered a real request. That run settled two of the nine acceptance criteria.
-  Four of nine hold as of 2026-08-20; `docs/STATUS.md` is the count of record.
+  Five of nine hold as of 2026-08-20; `docs/STATUS.md` is the count of record.
 - It used the **imperative path** (`platform/NN-*/install.sh`), not
   `task local:up`. Two things it needs were applied by hand: the CoreDNS manifest
   and the model overlay.
@@ -45,9 +45,10 @@ What that run settles, and what it does not:
   the run one layer at a time with a memory guard.
 
 **The pull-based path ran on 2026-08-20**, three times, and CI ran for the first
-time the same day. Criterion 1 is still open, but for reasons that are now measured
-rather than unknown. Read "The pull-based path" in
-`docs/deployment-walkthrough.md` before touching `clusters/local-kind/`.
+time the same day. Criterion 1 was settled on run 4, `task local:down && task
+local:up` in 17m09s with exit 0 and no manual step. Read "The pull-based path" in
+`docs/deployment-walkthrough.md` before touching `clusters/local-kind/`, because
+runs 1 to 3 are why run 4 was clean.
 
 - Run 3 **exited 0** with all sixteen Applications `Synced` and `Healthy`, and
   the gateway served `/v1/models` to a caller with no token. Read that sentence

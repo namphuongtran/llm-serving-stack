@@ -94,10 +94,13 @@ Every choice has an ADR in [`docs/adr/`](docs/adr/) with the evidence behind it.
 
 ## Status
 
-**Run for the first time on 2026-08-19.** Four of the nine phase 1 acceptance
-criteria hold. Thirteen layers came up on a 3-node `kind` cluster and the service
-answered a real request: 401 without a token, 200 with a JWT, and a streaming
-chat completion. Argo CD reached the same working service from git on 2026-08-20.
+**Run for the first time on 2026-08-19.** Five of the nine phase 1 acceptance
+criteria hold, and the four that do not have all simply never been run. Nothing
+is failing.
+
+`task local:down && task local:up` took an empty cluster to a ready service on
+2026-08-20 in **17 minutes 9 seconds**, exit 0, with no manual step: sixteen
+Argo CD Applications green, 401 without a token, and a streamed answer with one.
 CI ran for the first time the same day, failed three times, and has been green
 for four consecutive runs since.
 

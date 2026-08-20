@@ -26,15 +26,15 @@ a streaming chat completion. Argo CD reached the same working service from git
 on 2026-08-20. `docs/deployment-walkthrough.md` is the account, with every number
 dated, and `tools/step-up.sh` is how to repeat it one layer at a time.
 
-**Four of the nine phase 1 acceptance criteria now hold, and the five that do
-not are not held up by the same thing.** Criterion 1 has run and failed, on a
-named defect. The other four are untested. The table under "What is unproven"
-says which is which.
+**Five of the nine phase 1 acceptance criteria now hold, and the four that do
+not have all never been run.** No criterion is failing. The table under "What is
+unproven" says which is which.
 
-Criterion 9 moved from failing to holding on 2026-08-20, and this paragraph said
-"three" and named criterion 9 among the failures until then. It was re-measured
-rather than reasoned about: `gh run list --branch main` shows seven CI runs ever,
-the first three failed, and the last four succeeded.
+Two moved on 2026-08-20, both re-measured rather than reasoned about. Criterion 9
+went from failing to holding when CI turned green: `gh run list --branch main`
+shows seven runs ever, the first three red and the last four green. Criterion 1
+went from "not settled" to holding on run 4 of the pull path, timed at
+**17 minutes 9 seconds**, exit 0, with no manual step.
 
 Running it is what found the defects, and static review did not. The first run
 found seven that four separate review passes over the whole repository had all
@@ -79,13 +79,13 @@ so what follows is not a formality.
 
 ### The nine phase 1 acceptance criteria
 
-Two held on 2026-08-19, three on 2026-08-20, and four later the same day when
-CI went green. Settle the rest with `bats tests/` against a live cluster, then
-record the result and the date here.
+Two held on 2026-08-19. Three on 2026-08-20, then four when CI went green, then
+five when the pull path came up clean. Settle the rest with `bats tests/` against
+a live cluster, then record the result and the date here.
 
 | # | Criterion | Status | Settle it |
 |---|---|---|---|
-| 1 | `task local:up` takes an empty machine to a ready service | **not settled 2026-08-20** after three runs. Run 3 exited **0** with all sixteen Applications green, and the gateway had no authentication. Eighteen defects found, all fixed, re-run owed | `task local:down && task local:up` |
+| 1 | `task local:up` takes an empty machine to a ready service | **HOLDS 2026-08-20**, on run 4. Exit 0 in 17m09s, sixteen Applications green, 401 without a token and a streamed answer with one, no manual step | `task local:down && task local:up` |
 | 2 | A JWT obtained from Keycloak returns a streamed chat completion | **HOLDS 2026-08-19** | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
 | 3 | A request without a JWT is rejected with 401 | **HOLDS 2026-08-19** | `bats tests/smoke/06-auth-quota.bats` |
 | 4 | Exceeding the token quota returns 429 | **HOLDS 2026-08-20**, in CI. Not reachable on the local engine, see below | `bats tests/smoke/06-auth-quota.bats` |
@@ -95,11 +95,70 @@ record the result and the date here.
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
 | 9 | CI is green on an arm64 runner | **HOLDS 2026-08-20.** Four consecutive green runs, all four jobs each. First green run `32323568376`; latest `32326772197` | `gh run list`, after a push to `main` or a pull request |
 
-Criterion 1 is the one to read carefully. It was run for the first time on
-2026-08-20, on a cluster created from empty, and it failed. Seven defects came
-out of that one run, and none of them was visible from the imperative path.
-`docs/deployment-walkthrough.md`, section "The pull-based path", is the account.
-Two of the seven are worth naming here:
+Criterion 1 is the one to read carefully, and it took four runs.
+
+**Run 4 settled it, on 2026-08-20.** `task local:down && task local:up` deleted a
+running cluster, built a new one, and reached a ready service:
+
+```
+run started   2026-08-20T05:44:19Z
+run finished  2026-08-20T06:01:29Z
+elapsed       17m 09.65s
+exit          0
+
+all Applications Synced and Healthy (3 of 3 consecutive samples)
+16 of 16 Applications Synced and Healthy
+verify-serving.sh: unauthenticated request rejected with 401
+verify-serving.sh: the gateway serves ornith-9b
+```
+
+**Checked independently at 06:02:02Z, because a script reporting its own success
+is the exact failure run 3 was.** Not through `verify-serving.sh`, and not
+through the Application list:
+
+| Check | Result |
+|---|---|
+| `GET /v1/models`, no token | `HTTP 401` |
+| `GET /v1/models`, forged token | `HTTP 401` |
+| `GET /v1/models`, real JWT | `HTTP 200`, serving `ornith-9b`, Q4_K_M, 8.95B params |
+| `POST /v1/chat/completions`, `stream: true` | **43 SSE chunks**, terminated by `data: [DONE]` |
+| `InferenceService` | `ornith-9b=True`, `fallback-small=True` |
+| Predictor replicas | 2, on `worker` and `worker2`, different nodes |
+
+**Three things this run showed that a bare "exit 0" would hide.** All three are
+recorded because none of them is a defect, and each one would look like one to
+somebody reading a dashboard:
+
+- **Two containers restarted, and no human restarted them.** `keda-operator`
+  once (exit 0, `Completed`, 05:47:20Z) and `kserve-controller-manager` five
+  times (exit 1, `Error`, last at 05:50:58Z). Both report `ready=True` now.
+  These are Kubernetes recovering during convergence, not the `kubectl rollout
+  restart` that run 3 needed twice. The criterion asks for no manual step, and
+  there was none. Five restarts of the KServe controller is still a number worth
+  keeping rather than rounding away.
+- **Three TTFT prober pods were in `Error`, and that is expected.** They ran 8
+  to 10 minutes before the check, while the model was still loading its weights,
+  so there was nothing to probe. The next pod `Completed` and reported
+  `ttft-prober: 0.392332s`. Reading `kubectl get pods` alone would have raised a
+  false alarm here.
+- **Memory reached 18407 MiB, 77% of the 23.2 GiB Docker was given**, across 66
+  pods, measured at 06:03Z with `docker stats` on the three node containers, the
+  same method the walkthrough uses. That is a third sample beside 17855 MiB (75%,
+  2026-08-19) and 17576 MiB (74%, 2026-08-20 morning), not a correction of
+  either. The trend is upward and the remaining headroom is not large.
+
+**What this run does NOT settle.** `docs/07-why-gitops.md` owes the wall-clock
+time of `task local:down && task local:up && bats tests/`. This run was
+`down && up` with no test suite, so 17m09s is a lower bound for that number and
+not the number. The marker stays.
+
+The three runs before it are kept below, because the defects they found are the
+reason run 4 was clean.
+
+**Run 1 failed.** It was the first time the pull path had ever run, on a cluster
+created from empty. Seven defects came out of that one run, and none of them was
+visible from the imperative path. `docs/deployment-walkthrough.md`, section "The
+pull-based path", is the account. Two of the seven are worth naming here:
 
 - The old final command of `task local:up` waited only on an Application's
   health status, and an Application that failed to read its git path still
@@ -111,8 +170,8 @@ Two of the seven are worth naming here:
   failed. `helm install` never writes that annotation, which is why the
   imperative path installs the same charts without complaint.
 
-Run 3 is the one to read, and it is the reason this criterion is written as
-"not settled" rather than "fails". It exited **0**. All sixteen Argo CD
+Run 3 is the one to read, and it is the reason this criterion was written as
+"not settled" rather than "fails" until run 4 replaced it. It exited **0**. All sixteen Argo CD
 Applications were `Synced` and `Healthy` in three consecutive samples. And the
 first request was:
 
