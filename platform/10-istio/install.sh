@@ -3,6 +3,7 @@
 # Chosen over Envoy Gateway in docs/adr/0003-gateway-istio-ambient.md.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+. platform/lib/apply.sh
 
 v() { yq -r ".charts.$1" versions.yaml; }
 for k in istio_base istio_istiod istio_cni istio_ztunnel; do
@@ -26,13 +27,13 @@ helm upgrade --install ztunnel istio/ztunnel -n istio-system --version "$(v isti
 kubectl create namespace llm --dry-run=client -o yaml | kubectl apply -f -
 kubectl label namespace llm istio.io/dataplane-mode=ambient --overwrite
 
-kubectl apply -f platform/10-istio/gateway.yaml
+apply_retry platform/10-istio/gateway.yaml   # istiod's validator is failurePolicy Fail
 kubectl wait --for=condition=Programmed gateway/llm -n istio-system --timeout=5m
 
 # After the Gateway is Programmed, so the workload the Telemetry selects
 # already exists. Applying it earlier is harmless but produces no configured
 # proxy to look at, which makes a failure here harder to read.
-kubectl apply -f platform/10-istio/telemetry.yaml
+apply_retry platform/10-istio/telemetry.yaml
 
 # Bind the generated gateway Service to the NodePort kind maps to host port 80.
 kubectl -n istio-system patch svc llm-istio --type=merge -p \

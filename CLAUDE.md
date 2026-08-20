@@ -202,6 +202,13 @@ CI runs on `ubuntu-24.04-arm`.
   enforces this in namespace `llm`, including for throwaway test fixtures.
 - **Scripts must parse under bash 3.2.57**, the version macOS ships. No
   `mapfile`, no `readarray`, no `${v,,}`. Check with `/bin/bash -n`.
+- **Applying an object that a just-installed webhook must admit goes through
+  `apply_retry`** (`platform/lib/apply.sh`), never bare `kubectl apply`.
+  `helm --wait` and `kubectl rollout status` do not wait for a webhook to be
+  reachable, and four CI runs died on that gap. `apply_retry` retries only
+  `failed calling webhook` and still fails at once on `denied the request`,
+  because a rejected manifest is a finding. See `docs/STATUS.md`, "The webhook
+  readiness race".
 - **No `: ` inside a `Taskfile.yml` command string.** go-task 3.53.1 reads a
   colon followed by a space as command shorthand, even inside quotes, and
   breaks `task --list` for the whole file. Use ` - ` instead.

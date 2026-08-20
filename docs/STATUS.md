@@ -251,6 +251,111 @@ performance.
 > refresh the token during a run, then re-run `task bench` on a quiet cluster and
 > commit the dated result directory under `bench/results/`.
 
+## The webhook readiness race
+
+**Four consecutive CI runs died on this, and it is one defect, not four.** All
+four were documentation-only commits, which cannot break a cluster job.
+
+`helm --wait` and `kubectl rollout status` return when a Deployment reports
+available. Neither waits for an **admission webhook to be reachable**. Every
+install script then uses the very next command to create an object that webhook
+must admit.
+
+Two instances, two components, measured from the CI logs:
+
+| Run | Job | Timing | Webhook |
+|---|---|---|---|
+| `32340677894` | `observability` | `06:45:08.0058` rolled out, `06:45:08.2002` refused, **194 ms** | `servingruntime.kserve-webhook-server.validator` |
+| `32342136049` | `smoke` | `07:05:15.1581` rolled out, `07:05:15.2340` refused, **73 ms** | `mutate-policy.kyverno.svc` |
+
+```
+Internal error occurred: failed calling webhook "servingruntime.kserve-webhook-server.validator":
+Post "https://kserve-webhook-server-service.kserve.svc:443/...": dial tcp 10.96.75.106:443: connect: connection refused
+```
+
+`connection refused` on a ClusterIP is the signature of a Service with no ready
+endpoints: kube-proxy installs a REJECT rule. For KServe there is a second,
+independent reason: its readiness probe is `/readyz` on **8081** while the
+webhook serves on **9443**, so readiness does not cover the webhook at all.
+
+**Why it looked random.** It is a race, so which job loses is luck. `smoke`
+survived twice only because it installs Kuadrant after KServe, which takes tens
+of seconds and incidentally covered the gap. On the third run `smoke` lost and
+`observability` won.
+
+### The scope is four call sites, not two
+
+Every `failurePolicy: Fail` webhook in this cluster belongs to cert-manager,
+KServe, istiod, or Kyverno. Anywhere an object is applied right after the webhook
+that must admit it:
+
+| Site | Applies | Webhook | Seen fail |
+|---|---|---|---|
+| `platform/12-kyverno/install.sh` | `policy/*.yaml` | `kyverno-policy-mutating` | yes |
+| `.github/workflows/ci.yml`, `Deploy the CI model` | the model overlay | `servingruntime.serving.kserve.io` | yes |
+| `platform/10-istio/install.sh` | `gateway.yaml`, `telemetry.yaml` | `istio-validator-istio-system` | not yet |
+| `platform/15-keycloak/install.sh` | into namespace `llm` | `kyverno-resource-validating` | not yet |
+
+### The fix, and why a plain retry would have been wrong
+
+`platform/lib/apply.sh` provides `apply_retry`, and all four sites use it. It
+retries **only** the unreachable signature and fails immediately on a denial:
+
+```
+failed calling webhook ... connect: connection refused   -> transient, retry
+admission webhook "..." denied the request: ...          -> real, fail at once
+```
+
+That distinction is the whole design. `.github/workflows/ci.yml` states that a
+policy rejection must turn the job red, and that the red "is a real finding
+rather than a CI problem to route around". A retry loop that swallowed all
+errors would turn exactly that finding green after a few seconds.
+
+The loop carries a wall clock, default 180s, which is this repository's own rule
+after a CI job hung for 39 minutes.
+
+**This is not a new pattern here.** `clusters/local-kind/root-app.yaml` already
+carries `retry: limit 20`, so Argo CD rides out the same race on the pull-based
+path. The imperative path was missing what the declarative path already had.
+
+### Proved by mutation on a live cluster, 2026-08-20
+
+Three tests, each against the real webhook rather than a simulation:
+
+| Test | Setup | Result |
+|---|---|---|
+| Unreachable webhook recovers | `kserve-controller-manager` scaled to 0, endpoints `[]`, webhook config still present, scaled back after 30s | retried **30 attempts over 65s**, then `exit 0` |
+| Denial is not retried | a Pod with a floating tag applied to namespace `llm` | `exit 1` in **0s**, `apply_retry: admission denied, not retrying` |
+| The wall clock bounds it | same as test 1 with `APPLY_RETRY_TIMEOUT=6`, backend never restored | `exit 1` after **7s**, 4 attempts, original error printed |
+
+Test 1 was run first against Kyverno and proved nothing, because **Kyverno removes
+its own webhook configurations when its admission controller is down**. With no
+webhook config there is no race to reproduce. KServe does not do this, which is
+why it is the honest reproduction and also why it is the one CI hit twice.
+
+> **Untried (2026-08-20):** whether this fixes CI. Three mutation tests pass
+> locally and no CI run has exercised the change yet. Criterion 9 stays flaky
+> until a run proves otherwise; see `gh run list --branch main`.
+
+**And the changed script could not be run end to end here**, which is a separate
+finding worth its own line. `./platform/12-kyverno/install.sh` on this cluster
+exits 1 at its **first** command:
+
+```
+Release "kyverno" does not exist. Installing it now.
+Error: unable to continue with install: ServiceAccount "kyverno-admission-controller"
+in namespace "kyverno" exists and cannot be imported into the current release:
+invalid ownership metadata; annotation validation error: missing key
+"meta.helm.sh/release-name"
+```
+
+This cluster was built by Argo CD, which renders the chart and applies it, so
+Helm holds no release record. The failure is at `helm upgrade --install`, before
+`apply_retry` is reached, so it says nothing about the change above. What it does
+say is that `CLAUDE.md`'s description of the install scripts as "a working manual
+bootstrap" holds **only on a cluster those scripts built**. The two paths are not
+interchangeable on an existing cluster, in either direction.
+
 ## What is unproven
 
 The single most important section of this file. One run on 2026-08-19 settled two

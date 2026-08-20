@@ -13,6 +13,7 @@
 # (policy/tests), which is a different claim from "admission rejects this".
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+. platform/lib/apply.sh
 
 # Chart 3.8.2 is appVersion v1.18.2, read 2026-08-19 with
 # `helm show chart kyverno/kyverno --version 3.8.2`. That is the same version
@@ -35,8 +36,11 @@ kubectl -n kyverno rollout status deploy/kyverno-admission-controller --timeout=
 # holds README.md and the tests/ subdirectory, and kubectl fails on the
 # README. .github/workflows/ci.yml records the same trap for the Kyverno CLI,
 # which silently loads zero rules from the directory form instead of failing.
+# apply_retry, not kubectl apply. rollout status above does not wait for the
+# webhook to be reachable, and these policies go through it. A denial still
+# fails immediately. See platform/lib/apply.sh.
 for p in policy/*.yaml; do
-  kubectl apply -f "$p"
+  apply_retry "$p"
 done
 
 # Applying a ClusterPolicy is not the same as enforcing it. Kyverno reports

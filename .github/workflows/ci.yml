@@ -194,14 +194,25 @@ jobs:
           ./platform/20-kserve/install.sh
           ./platform/25-kuadrant/install.sh
       - name: Deploy the CI model
-        run: kustomize build models/ornith-9b/overlays/ci | kubectl apply -f -
+        # apply_retry, not kubectl apply. The KServe webhook is failurePolicy
+        # Fail and is not reachable the instant `rollout status` returns; four
+        # CI runs died here on 2026-08-20. A Kyverno denial still fails at
+        # once, which is what the comment above wants. platform/lib/apply.sh.
+        run: |
+          set -euo pipefail
+          . platform/lib/apply.sh
+          kustomize build models/ornith-9b/overlays/ci | apply_retry -
       - name: Deploy the OIDC policies
         # tests/smoke/06-auth-quota.bats needs the AuthPolicy and
         # TokenRateLimitPolicy in place to see 401/429 at all; without this
         # step every request in that suite would return 200 unauthenticated,
         # which is the test passing for the wrong reason - the exact defect
         # this repository's evidence discipline forbids.
-        run: kubectl apply -f security/oidc/authpolicy.yaml -f security/oidc/tokenratelimitpolicy.yaml
+        run: |
+          set -euo pipefail
+          . platform/lib/apply.sh
+          apply_retry security/oidc/authpolicy.yaml
+          apply_retry security/oidc/tokenratelimitpolicy.yaml
       - name: Smoke and contract tests
         run: |
           sudo apt-get update && sudo apt-get install -y bats
@@ -298,7 +309,14 @@ jobs:
           ./platform/10-istio/install.sh
           ./platform/20-kserve/install.sh
       - name: Deploy the CI model
-        run: kustomize build models/ornith-9b/overlays/ci | kubectl apply -f -
+        # apply_retry, not kubectl apply. The KServe webhook is failurePolicy
+        # Fail and is not reachable the instant `rollout status` returns; four
+        # CI runs died here on 2026-08-20. A Kyverno denial still fails at
+        # once, which is what the comment above wants. platform/lib/apply.sh.
+        run: |
+          set -euo pipefail
+          . platform/lib/apply.sh
+          kustomize build models/ornith-9b/overlays/ci | apply_retry -
       - name: Install observability
         # After the model, not before. The PodMonitor this script applies
         # selects on the KServe inferenceservice label, and the recording
