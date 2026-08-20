@@ -36,5 +36,10 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://kube-prometheus-stack-prometheus.observability.svc:9090
-        query: llmstack:requests_waiting
+        # Not llmstack:requests_waiting: that one sums every model, so
+        # fallback-small's queue used to scale this predictor. The label comes
+        # from podTargetLabels in platform/30-observability/podmonitor.yaml,
+        # which carries the Untried marker for it. The outer sum with a
+        # vector(0) fallback keeps this query returning exactly one sample.
+        query: sum(llmstack:requests_waiting:by_model{serving_kserve_io_inferenceservice="ornith-9b"}) or vector(0)
         threshold: "2"

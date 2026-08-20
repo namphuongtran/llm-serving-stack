@@ -18,6 +18,22 @@ spec:
   namespaceSelector: { matchNames: [llm] }
   selector:
     matchExpressions: [{ key: serving.kserve.io/inferenceservice, operator: Exists }]
+  # Without this every predictor series is anonymous, so the recording rules
+  # could only sum all models into one number and ornith-9b's autoscaler read
+  # fallback-small's queue. R14 in docs/sad/11-risks-and-debt.md.
+  #
+  # Prometheus Operator replaces every character outside [a-zA-Z0-9_] with `_`,
+  # so the label arrives as `serving_kserve_io_inferenceservice`. That name is
+  # what recording-rules.yaml and scaledobject.yaml both match on.
+  #
+  # **Untried (2026-08-20):** the sanitised label name. If it is wrong the label
+  # is simply absent, the ScaledObject's filter matches nothing, its `or
+  # vector(0)` returns 0, and KEDA silently never scales. Settle it on a live
+  # cluster before trusting the autoscaler:
+  #   kubectl -n observability exec deploy/kube-prometheus-stack-prometheus -- \
+  #     wget -qO- 'localhost:9090/api/v1/series?match[]=llamacpp:requests_deferred'
+  # and read whether serving_kserve_io_inferenceservice is in the result.
+  podTargetLabels: [serving.kserve.io/inferenceservice]
   podMetricsEndpoints: [{ port: http, path: /metrics, interval: 15s }]
 ---
 # Added 2026-08-19. The PodMonitor above scrapes only predictor pods in

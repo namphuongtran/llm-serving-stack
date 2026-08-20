@@ -33,6 +33,10 @@ spec:
         # llamacpp:requests_deferred - "Number of requests deferred." (Gauge)
         - record: llmstack:requests_waiting
           expr: sum(llamacpp:requests_deferred) or vector(0)
+        # The line above is the cluster total, which is what the dashboard
+        # graphs. An autoscaler needs one model's queue, not every model's.
+        - record: llmstack:requests_waiting:by_model
+          expr: sum by (serving_kserve_io_inferenceservice) (llamacpp:requests_deferred)
         # llamacpp:tokens_predicted_total - "Number of generation tokens
         # processed." (Counter)
         - record: llmstack:tokens_out_total
@@ -194,6 +198,37 @@ spec:
     - name: llmstack.alerts
       interval: 30s
       rules:
+        # Three alerts added 2026-08-20. Until then the only alert in this
+        # repository watched the prober, so the one failure mode it had actually
+        # measured, R7, raised nothing. R18 in docs/sad/11-risks-and-debt.md.
+        #
+        # **Untried (2026-08-20):** none of the three has ever fired, and
+        # values-prometheus.yaml sets `alertmanager: enabled: false`, so a firing
+        # alert appears in Prometheus and its `ALERTS` series and is routed
+        # nowhere. Enabling Alertmanager is a separate decision with a memory
+        # cost (R4). Settle these by re-running the 2026-08-20 load test and
+        # reading `ALERTS{alertstate="firing"}`.
+        - alert: LLMGatewayErrorRatioHigh
+          expr: llmstack:gateway_error_ratio:rate5m > 0.05
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "More than 5% of gateway requests are 5xx"
+            description: "This is the shape of R7: Authorino returns gRPC 14 UNAVAILABLE when it cannot reach the issuer, and the gateway renders that as HTTP 500 on both the accept and the reject path. Check the Authorino logs for 'failed to discovery openid connect configuration' before blaming the engine."
+        - alert: LLMQueueAboveScaleThreshold
+          expr: llmstack:requests_waiting > 2
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "Requests have been queued above the KEDA threshold for 10 minutes"
+            description: "The ScaledObject threshold is 2. A queue that stays above it for ten minutes means scaling is not relieving it: either the replica ceiling is reached, or a new replica cannot schedule, or it is still downloading weights."
+        - alert: LLMPredictorReplicasNotReady
+          expr: kube_deployment_spec_replicas{namespace="llm"} - kube_deployment_status_replicas_ready{namespace="llm"} > 0
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "A predictor Deployment has wanted more replicas than it has for 15 minutes"
+            description: "This is R8: maxReplicaCount 3 and maxSkew 1 cannot both hold on two worker nodes, so KEDA writes spec.replicas 3 and the third pod stays Pending. tests/smoke/07-autoscaling.bats asserts on spec.replicas and passes anyway, which is why this alert exists. Read `kubectl -n llm describe pod` for the scheduling message."
         - alert: TTFTProberStale
           # The prober runs once a minute; 300s tolerates a handful of missed
           # runs before paging, and `for: 2m` keeps a single borderline scrape

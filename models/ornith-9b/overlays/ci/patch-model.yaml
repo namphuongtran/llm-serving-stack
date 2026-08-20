@@ -53,7 +53,9 @@ spec:
             if [ -f /models/model.gguf ]; then
               echo "weights already present"; exit 0
             fi
-            curl -fL --retry 3 -o /models/model.gguf \
+            curl -fL --retry 3 --connect-timeout 20 \
+              --speed-limit 10240 --speed-time 60 \
+              -o /models/model.gguf \
               "https://huggingface.co/${HF_REPO}/resolve/main/${HF_FILE}"
             echo "${SHA256}  /models/model.gguf" | sha256sum -c -
         env:

@@ -713,19 +713,28 @@ files are named in the list above only in the sense that "this one" now means
 The prose above names seven files including this one and omits
 `docs/sad/07-deployment-view.md`. The block that used to sit here named seven
 including `07-deployment-view.md` and omitted this one. Neither set is the real
-one. Re-measured 2026-08-20 against tracked files, there are **13 markers across
-eight files**:
+one. Re-measured 2026-08-20 against tracked files, there are **16 markers across
+eleven files**:
 
 ```
-.github/workflows/ci.yml                  4
-docs/STATUS.md                            1
-docs/sad/07-deployment-view.md            1
-platform/10-istio/telemetry.yaml          1
-platform/12-kyverno/install.sh            1
-platform/30-observability/tempo.yaml      2
-tests/contract/01-openai-api.bats         1
-tests/smoke/05-observability.bats         2
+.github/workflows/ci.yml                       4
+docs/STATUS.md                                 1
+docs/sad/07-deployment-view.md                 1
+platform/10-istio/telemetry.yaml               1
+platform/12-kyverno/install.sh                 1
+platform/30-observability/podmonitor.yaml      1
+platform/30-observability/recording-rules.yaml 1
+platform/30-observability/tempo.yaml           2
+security/oidc/tokenratelimitpolicy.yaml        1
+tests/contract/01-openai-api.bats              1
+tests/smoke/05-observability.bats              2
 ```
+
+It read 13 across eight files earlier the same day, before R13, R14, and R18
+were fixed. Each of those three fixes brought a marker, because each changes a
+mechanism that no run has exercised yet. The count rising here is the shape this
+is supposed to take: a fix that cannot be verified offline owes a marker rather
+than a claim.
 
 That paragraph used to add that the tracked-file count was **11**, because
 `docs/sad/` was not yet committed, and that committing it would make the two
@@ -733,7 +742,9 @@ numbers agree. `docs/sad/` **is** committed now (`git ls-files docs/sad/`), so
 there is one number rather than two, and it is 13 rather than 12. The
 `Unmeasured` command moved the same way: it read **16** across 13 files counting
 the then-uncommitted documents and **15** across 12 counting tracked files only,
-and against tracked files on 2026-08-20 it reads **18 across 14**.
+and against tracked files on 2026-08-20 it reads **18 across 14**. That one did
+not move when R13 to R18 were fixed, because those fixes owe an exercised
+mechanism rather than a number.
 
 It was 13 across eight files earlier the same day. The one that went is
 `docs/deployment-walkthrough.md`'s, which asked whether Argo CD applies the

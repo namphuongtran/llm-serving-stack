@@ -70,6 +70,8 @@ spec:
         periodSeconds: 30
       volumeMounts:
         - { name: models, mountPath: /models }
-      resources:
-        requests: { cpu: "2", memory: 8Gi }
-        limits: { cpu: "6", memory: 12Gi }
+      # No `resources` here. Memory for a model server is a fact about the
+      # model: weights plus the KV cache for --ctx-size. Sizing it here made
+      # every model inherit ornith-9b's 8Gi, which is why fallback.yaml had to
+      # override it to 1Gi. Each overlay under models/*/ sets its own, and
+      # policy/require-resource-limits.yaml rejects a Pod that sets none.

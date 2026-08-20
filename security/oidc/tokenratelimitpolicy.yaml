@@ -1,6 +1,19 @@
 # Counts tokens, not requests: one request can cost 10 or 100,000 tokens.
 # Limits are small on purpose so the smoke test reaches 429 in seconds.
 #
+# The tier chooses the limit; `azp` (the client_id) is what gets counted. Keying
+# the counter on the tier gave every client on one tier a single shared budget,
+# and keying it on `sub` would reset every counter whenever Keycloak restarts,
+# because realm-export.json declares no users and start-dev persists nothing, so
+# the service-account UUID is minted fresh on each import. R13 in
+# docs/sad/11-risks-and-debt.md carries the full record.
+#
+# **Untried (2026-08-20):** whether `auth.identity.azp` resolves. `tier` does, on
+# the same mechanism, and both are claims in the same token. Settle it with a
+# live cluster: `bats tests/smoke/06-auth-quota.bats`, then confirm two clients
+# on one tier hold separate budgets by spending one to 429 and checking that a
+# second client on that tier still gets 200.
+#
 # Shape and apiVersion confirmed against the installed CRD, not carried over
 # from memory: `helm template` of kuadrant/kuadrant-operator --version 1.5.2
 # (the version platform/25-kuadrant/install.sh pins) on 2026-08-19 renders
@@ -29,7 +42,7 @@ spec:
       when:
         - predicate: 'auth.identity.tier == "free"'
       counters:
-        - expression: auth.identity.tier
+        - expression: auth.identity.azp
     pro:
       rates:
         - limit: 100000
@@ -37,4 +50,4 @@ spec:
       when:
         - predicate: 'auth.identity.tier == "pro"'
       counters:
-        - expression: auth.identity.tier
+        - expression: auth.identity.azp
