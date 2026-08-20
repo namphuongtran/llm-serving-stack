@@ -208,6 +208,18 @@ spec:
         # nowhere. Enabling Alertmanager is a separate decision with a memory
         # cost (R4). Settle these by re-running the 2026-08-20 load test and
         # reading `ALERTS{alertstate="firing"}`.
+        # R19. Measured on this cluster 2026-08-20 in both states: a healthy
+        # gateway pod reports fetch_successes 1, a pod whose shim never loaded
+        # reports 0 for the life of the pod. successes==0 beats failures>0 as the
+        # signal, because a fetch that failed once and then succeeded leaves
+        # failures at 1 on a perfectly working gateway.
+        - alert: LLMGatewayWasmShimNotLoaded
+          expr: envoy_wasm_remote_load_fetch_successes == 0
+          for: 3m
+          labels: { severity: critical }
+          annotations:
+            summary: "A gateway pod never loaded the Kuadrant Wasm shim and is rejecting every request"
+            description: "The shim is fetched once at startup from kuadrant-operator-wasm.kuadrant-system.svc and is configured to fail closed, so this pod returns 503 to everything, token issuance included, and Envoy never retries. The pod still reports ready, because readiness is /healthz/ready on 15021 and does not cover the shim. platform/10-istio/wasm-watchdog.yaml restarts the Deployment when this holds for 3 minutes; if that CronJob is not installed, run `kubectl -n istio-system rollout restart deploy/llm-istio`."
         - alert: LLMGatewayErrorRatioHigh
           expr: llmstack:gateway_error_ratio:rate5m > 0.05
           for: 5m

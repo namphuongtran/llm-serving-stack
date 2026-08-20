@@ -1,0 +1,134 @@
+# Closes R19 (docs/sad/11-risks-and-debt.md): the gateway fetches the Kuadrant
+# Wasm shim once at startup, fails closed if the fetch loses a race, and never
+# retries. Nothing restarts it, so the whole service returns 503 until a human
+# does. Reproduced by mutation 2026-08-20: the shim gave up 3.2s after the pod
+# started, and the pod still reported ready=true while every request 503'd.
+#
+# Why a CronJob and not a probe. A liveness probe on the gateway is the obvious
+# answer and it is not available: the Deployment is owned by the Gateway and
+# managed by istio.io/gateway-controller, which reverts pod-spec edits. The
+# EnvoyFilter that carries the fetch is labelled kuadrant.io/managed=true and has
+# no retry_policy to widen. So the restart has to come from outside.
+#
+# The signal, measured on this cluster 2026-08-20 in both states:
+#   healthy  envoy_wasm_remote_load_fetch_successes 1, failures 0, v8_active 4
+#   broken   envoy_wasm_remote_load_fetch_successes 0, failures 1, v8_active absent
+# successes==0 is the discriminator: unlike failures>0 it cannot be tripped by a
+# fetch that failed once and then succeeded.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wasm-watchdog
+  namespace: istio-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: wasm-watchdog
+  namespace: istio-system
+rules:
+  # resourceNames pins this to the one Deployment it exists to restart. A patch
+  # on the pod template is exactly what `kubectl rollout restart` does.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["llm-istio"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wasm-watchdog
+  namespace: istio-system
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: wasm-watchdog }
+subjects:
+  - { kind: ServiceAccount, name: wasm-watchdog, namespace: istio-system }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wasm-watchdog
+  namespace: istio-system
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 60
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: wasm-watchdog
+          containers:
+            - name: watchdog
+              # Same digest as the two fetch-weights init containers and the
+              # TTFT prober. No new image, so no new digest to verify.
+              image: curlimages/curl:8.21.0@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  PROM="http://kube-prometheus-stack-prometheus.observability.svc:9090"
+                  API="https://kubernetes.default.svc"
+                  SA=/var/run/secrets/kubernetes.io/serviceaccount
+
+                  # Asked separately, not piped. A curl failure inside a pipeline
+                  # leaves an empty result that reads exactly like "healthy", and
+                  # a watchdog that reports health when it cannot see is worse
+                  # than no watchdog. Exit 1 so the Job goes red instead.
+                  count_of() {
+                    if ! RAW="$(curl -sf --max-time 15 --get "$PROM/api/v1/query" --data-urlencode "query=$1")"; then
+                      echo "wasm-watchdog: cannot reach Prometheus, taking no action" >&2
+                      exit 1
+                    fi
+                    N="$(printf '%s' "$RAW" | sed -n 's/.*"value":\[[^,]*,"\([^"]*\)"\].*/\1/p')"
+                    # An empty vector prints nothing, which is the count 0.
+                    printf '%s' "${N:-0}"
+                  }
+
+                  # `== 0` is an instant selector, so it sees only pods that exist
+                  # now. A range selector keeps matching a pod that was already
+                  # restarted until its samples age out, which turns one real
+                  # failure into three restarts. No max_over_time is needed:
+                  # fetch_successes is a counter, so reading 0 now proves it was 0
+                  # for the whole window.
+                  BROKEN="$(count_of 'count(envoy_wasm_remote_load_fetch_successes == 0)')"
+
+                  # The same, plus a full observation window. At a 15s scrape
+                  # interval 3 minutes is 12 samples, so 10 tolerates two misses
+                  # and means "0 for about 2.5 minutes". Without this a single 0
+                  # sample restarts a healthy gateway one second before it
+                  # finishes loading; measured 2026-08-20, the runs at 15:04 and
+                  # 15:06 correctly held off and the one at 15:08 acted.
+                  #
+                  # Deliberately not a query for the matching alert in
+                  # recording-rules.yaml, whose `for: 3m` says this more cleanly:
+                  # a watchdog for a silent failure must not gain a second thing
+                  # that can silently switch it off.
+                  SURE="$(count_of 'count(envoy_wasm_remote_load_fetch_successes == 0 and count_over_time(envoy_wasm_remote_load_fetch_successes[3m]) >= 10)')"
+
+                  if [ "$SURE" = "0" ]; then
+                    if [ "$BROKEN" = "0" ]; then
+                      echo "wasm-watchdog: every gateway pod has loaded the shim"
+                    else
+                      # Never print the all-clear here. This branch is the one a
+                      # first version of this script got wrong: it reported the
+                      # shim loaded while the gateway was returning 503.
+                      echo "wasm-watchdog: $BROKEN gateway pod(s) have not loaded the shim, waiting for a full observation window before restarting"
+                    fi
+                    exit 0
+                  fi
+
+                  echo "wasm-watchdog: $SURE gateway pod(s) never loaded the shim, restarting llm-istio"
+                  curl -sf --max-time 20 -o /dev/null -X PATCH \
+                    --cacert "$SA/ca.crt" \
+                    -H "Authorization: Bearer $(cat "$SA/token")" \
+                    -H "Content-Type: application/strategic-merge-patch+json" \
+                    -d "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"llmstack.io/wasm-watchdog-restarted-at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}}}" \
+                    "$API/apis/apps/v1/namespaces/istio-system/deployments/llm-istio"
+                  echo "wasm-watchdog: restart patch accepted"
+              resources:
+                requests: { cpu: 10m, memory: 16Mi }
+                limits: { cpu: 100m, memory: 32Mi }
