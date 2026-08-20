@@ -132,7 +132,7 @@ cluster, then record the result and the date here.
 
 | # | Criterion | Status | Settle it |
 |---|---|---|---|
-| 1 | `task local:up` takes an empty machine to a ready service | **fails 2026-08-20**, seven defects found and fixed, re-run owed | `task local:down && task local:up` |
+| 1 | `task local:up` takes an empty machine to a ready service | **fails 2026-08-20** after two runs. The service ANSWERED on run 2; the command still exited 201. Thirteen defects found, all fixed, re-run owed | `task local:down && task local:up` |
 | 2 | A JWT obtained from Keycloak returns a streamed chat completion | **HOLDS 2026-08-19** | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
 | 3 | A request without a JWT is rejected with 401 | **HOLDS 2026-08-19** | `bats tests/smoke/06-auth-quota.bats` |
 | 4 | Exceeding the token quota returns 429 | untested | `bats tests/smoke/06-auth-quota.bats` |
@@ -140,7 +140,7 @@ cluster, then record the result and the date here.
 | 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | untested | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, PDB holding | untested | `bats tests/smoke/08-availability.bats` |
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
-| 9 | CI is green on an arm64 runner | untested | push this branch, read `.github/workflows/ci.yml`'s result |
+| 9 | CI is green on an arm64 runner | **fails 2026-08-20**, first run ever. `lint` and `policy` green; the two cluster jobs failed on test defects, not on the platform | `gh run list`, after a push to `main` or a pull request |
 
 Criterion 1 is the one to read carefully. It was run for the first time on
 2026-08-20, on a cluster created from empty, and it failed. Seven defects came
@@ -158,7 +158,32 @@ Two of the seven are worth naming here:
   failed. `helm install` never writes that annotation, which is why the
   imperative path installs the same charts without complaint.
 
-All seven fixes are in. The re-run that would settle this criterion is owed. Criterion 2 is met with one caveat recorded in
+Run 2 is the one to read. It got the whole way to a working service:
+
+```
+GET /v1/models, no token                 -> HTTP 401
+GET /v1/models, JWT from Keycloak        -> HTTP 200, serving ornith-9b
+POST /v1/chat/completions, stream: true  -> 67 data chunks, terminates with [DONE]
+```
+
+with both `InferenceService` objects `READY=True`, this repository's three
+admission policies installed and enforcing, and 13 of 16 Argo CD Applications
+Synced. So the substance of the criterion held. The criterion did not, because
+`task local:up` exited 201 on three Applications that could never go green: an
+HPA with no metrics-server behind it, a deprecated annotation KServe rewrites,
+and defaults the API server fills in. Six more defects came out of that, on top
+of run 1's seven.
+
+All thirteen fixes are in. The re-run that would settle this criterion is owed.
+
+Criterion 9 also moved. Pushing a branch never triggered CI, because the workflow
+runs on `pull_request` and on `push` to `main`. Fast-forwarding `main` triggered
+the first CI run this repository has ever had. `lint` and `policy` passed. The
+other two jobs each built a real `kind` cluster and installed the platform
+successfully, then failed in the test suites: one test asserted on output that
+`kubectl run --rm` does not reliably produce, and one unbounded loop hung a job
+for 39 minutes until its own timeout killed it. Both are fixed. Neither was a
+platform failure. Criterion 2 is met with one caveat recorded in
 `docs/deployment-walkthrough.md`: `tests/contract/01-openai-api.bats` passes 4 of
 5, and the failing one is about this model being a reasoning model, not about the
 API contract.
@@ -196,11 +221,18 @@ than a number nobody has measured. Find those with:
 git ls-files -z | xargs -0 grep -nE 'Untried \(20[0-9]{2}-'
 ```
 
-which returned **13** on 2026-08-20, across eight files: this one,
-`docs/deployment-walkthrough.md`, `platform/10-istio/telemetry.yaml`,
-`platform/12-kyverno/install.sh`, `tests/contract/01-openai-api.bats`, two in
+which returned **12** on 2026-08-20, across seven files: this one,
+`platform/10-istio/telemetry.yaml`, `platform/12-kyverno/install.sh`,
+`tests/contract/01-openai-api.bats`, two in
 `platform/30-observability/tempo.yaml`, two in
 `tests/smoke/05-observability.bats`, and four in `.github/workflows/ci.yml`.
+
+It was 13 across eight files earlier the same day. The one that went is
+`docs/deployment-walkthrough.md`'s, which asked whether Argo CD applies the
+CoreDNS manifest cleanly. Running the pull path settled it: the ConfigMap is
+`Synced`, its explicit `namespace: kube-system` beat the Application's
+`istio-system` destination, `Prune=false` survived, and `llm.localtest.me`
+resolved to the gateway ClusterIP from inside a pod.
 
 It moved three times across two days, and every move is the shape this is
 supposed to take rather than a regression. From 10 to 11 when `actions/checkout`

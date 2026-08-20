@@ -23,6 +23,10 @@ spec:
     helm:
       valuesObject:
         profile: ambient
+        # kind has no metrics-server, so this HPA reports
+        # ScalingActive=False and Argo CD calls the Application Degraded.
+        # Twin of platform/10-istio/helm/values-istiod.yaml.
+        autoscaleEnabled: false
         meshConfig:
           extensionProviders:
             - name: otel-tracing

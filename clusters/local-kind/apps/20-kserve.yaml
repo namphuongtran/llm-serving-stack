@@ -43,7 +43,9 @@ spec:
         valuesObject:
           kserve:
             controller:
-              deploymentMode: RawDeployment
+              # Twin of platform/20-kserve/values-kserve.yaml, which carries
+              # the reason this is Standard and not the legacy alias.
+              deploymentMode: Standard
               gateway:
                 # See platform/20-kserve/values-kserve.yaml for why this is
                 # true: KServe's generated HTTPRoutes use a hostname the

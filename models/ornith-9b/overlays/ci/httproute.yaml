@@ -16,14 +16,19 @@ metadata:
   name: ornith-9b-openai
   namespace: llm
 spec:
-  parentRefs: [{ name: llm, namespace: istio-system }]
+  # Defaults written out so git can match the live object; see the note in
+  # models/ornith-9b/overlays/local/httproute.yaml.
+  parentRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: llm, namespace: istio-system }]
   hostnames: ["llm.localtest.me"]
   rules:
     - matches:
         - path: { type: PathPrefix, value: /v1 }
       backendRefs:
-        - name: ornith-9b-predictor
+        - group: ""
+          kind: Service
+          name: ornith-9b-predictor
           port: 80
+          weight: 1
       timeouts:
         request: 600s
         backendRequest: 600s

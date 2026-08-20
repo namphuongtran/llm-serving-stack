@@ -111,7 +111,10 @@ get_token() {
   local client="$1"
   local secret_var="KC_SECRET_${client//-/_}"
   local secret="${!secret_var:-devsecret}"
-  curl -sf -X POST "http://${API_HOST}/realms/llm/protocol/openid-connect/token" \
+  # --max-time, because every caller of this is inside a test or a script with
+  # its own deadline and a hung token request would consume all of it silently.
+  # Added 2026-08-20 with the same fix in tests/smoke/06-auth-quota.bats.
+  curl -sf --max-time 30 -X POST "http://${API_HOST}/realms/llm/protocol/openid-connect/token" \
     -d grant_type=client_credentials \
     -d "client_id=${client}" \
     -d "client_secret=${secret}" | jq -r .access_token

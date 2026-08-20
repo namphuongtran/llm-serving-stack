@@ -15,6 +15,23 @@ spec:
     repoURL: https://github.com/namphuongtran/llm-serving-stack
     targetRevision: main
     path: models/ornith-9b/overlays/local
+  # KServe's webhook and controller write these four onto every
+  # InferenceService, so git can never match the cluster and Argo CD reported
+  # both of them OutOfSync for the life of the cluster (observed 2026-08-20).
+  # Read from the live object against the rendered overlay the same day.
+  #
+  # The other drift on this Application, deploymentMode and the HTTPRoute
+  # defaults, is fixed in the manifests instead - a default that CAN be written
+  # is written. `finalizers` cannot: putting a controller's finalizer in git
+  # would have Argo CD fight the controller for it.
+  ignoreDifferences:
+    - group: serving.kserve.io
+      kind: InferenceService
+      jsonPointers:
+        - /metadata/annotations/modelFormat
+        - /metadata/finalizers
+        - /spec/predictor/model/name
+        - /spec/predictor/model/resources
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     retry:

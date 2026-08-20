@@ -4,7 +4,13 @@ metadata:
   name: ornith-9b
   namespace: llm
   annotations:
-    serving.kserve.io/deploymentMode: RawDeployment
+    # `Standard`, not the legacy alias `RawDeployment`. KServe rewrites the
+    # alias, so git and the cluster could never agree and Argo CD reported this
+    # InferenceService OutOfSync for good. constants.go at tag v0.20.0 marks
+    # `RawDeployment` "deprecated: use Standard" and ParseDeploymentMode
+    # normalises it. Behaviourally identical, which is why versions.yaml kept
+    # the alias; that note was written before the declarative path had ever run.
+    serving.kserve.io/deploymentMode: Standard
     # KServe's default autoscaler class is HPA (constants.go at tag v0.20.0,
     # read 2026-08-19: `DefaultAutoscalerClass = AutoscalerClassHPA`). Without
     # this annotation KServe creates its own HorizontalPodAutoscaler on the

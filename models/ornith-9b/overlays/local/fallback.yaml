@@ -14,7 +14,9 @@ metadata:
   name: fallback-small
   namespace: llm
   annotations:
-    serving.kserve.io/deploymentMode: RawDeployment
+    # `Standard`, not `RawDeployment`; see the note on the same annotation in
+    # models/ornith-9b/base/inferenceservice.yaml.
+    serving.kserve.io/deploymentMode: Standard
     # Same reasoning as models/ornith-9b/base/inferenceservice.yaml. No
     # ScaledObject targets fallback-small, but KServe would still create an
     # HPA on its predictor Deployment without this; "external" keeps the two

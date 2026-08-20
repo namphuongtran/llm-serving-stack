@@ -51,7 +51,12 @@
 # one that owns the controller and the inferenceservice-config ConfigMap.
 kserve:
   controller:
-    deploymentMode: RawDeployment
+    # `Standard`, not the legacy alias `RawDeployment`. KServe's own install
+    # guide uses Standard, and constants.go at tag v0.20.0 marks the alias
+    # "deprecated: use Standard". Changed 2026-08-20 because the alias made
+    # every InferenceService permanently OutOfSync on the declarative path.
+    # The twin of this line is clusters/local-kind/apps/20-kserve.yaml.
+    deploymentMode: Standard
     gateway:
       # KServe generates its own HTTPRoutes for every InferenceService when
       # Gateway API is on: one named `<isvc>-predictor` and one named

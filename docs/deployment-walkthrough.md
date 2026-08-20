@@ -374,11 +374,19 @@ Everything above used the imperative path, `platform/NN-*/install.sh`. This
 section is the other path, `task local:up`, run for the first time on
 2026-08-20 against a cluster deleted and recreated from empty.
 
-It did not come up. It found seven defects, and none of them could be seen
-from the imperative path.
+It did not come up, twice. Run 1 found seven defects and run 2 found six more,
+and none of the thirteen could be seen from the imperative path.
 
-The run: started 23:23:27Z, exited **201** at 23:56:05Z, 32 minutes and 38
-seconds. Three Applications met the Synced condition (`root-app`,
+A note on the dates in this section, because this repository requires a
+measurement to carry the date it was taken. Every clock time here is UTC and
+carries a `Z`. The first run began at `2026-08-19T23:23:27Z` and the work
+continued past midnight UTC. The date label "2026-08-20" is the local date on
+the build machine, which is UTC+7, so `23:23:27Z` was 06:23 local on
+2026-08-20. Where an earlier section says 2026-08-19, local and UTC agreed on
+that day; here they do not.
+
+The run: started `2026-08-19T23:23:27Z`, exited **201** at
+`2026-08-19T23:56:05Z`, 32 minutes and 38 seconds. Three Applications met the Synced condition (`root-app`,
 `cert-manager`, `gateway-api-crds`) and fourteen timed out.
 
 That exit code is itself the check on the fix. On the same cluster the old
@@ -611,6 +619,203 @@ Argo CD does anyway; only the false drift is gone. `25-kuadrant.yaml` declares
 `recurse` too and does not drift, because it uses a multi-source `sources:`
 list rather than a single `source:`. That difference is not understood, and it
 is recorded here rather than explained.
+
+### Run 2, and the six defects that only a working sync can show
+
+Run 2 started `2026-08-19T23:58:35Z` and exited **201** at `2026-08-20T01:01:35Z`.
+The seven fixes above worked, and getting past them exposed a second layer.
+
+What run 2 settled, all of it new:
+
+| Fact | Run 1 | Run 2 |
+|---|---|---|
+| Applications hitting the annotation cap | 5 | **0** |
+| Applications Synced | 3 of 16 | **13 of 16** |
+| `InferenceService` objects | none created | **both `READY=True`** |
+| This repository's three ClusterPolicies | never installed | **installed, `Ready=True`, `admission=true`** |
+| `Prometheus` object | never created | pod `prometheus-kube-prometheus-stack-prometheus-0` exists |
+
+And the service answered, through the pull-delivered stack, at `00:12Z`:
+
+```
+GET /v1/models, no token                 -> HTTP 401
+GET /v1/models, JWT from Keycloak        -> HTTP 200, serving ornith-9b
+POST /v1/chat/completions, stream: true  -> 67 data chunks, terminates with [DONE]
+```
+
+`content` was empty and all 64 tokens went to `reasoning_content`, which is the
+reasoning-model behaviour already recorded above, not a delivery failure.
+
+So the substance of acceptance criterion 1 was met. The criterion is not, because
+`task local:up` still exited non-zero, on three Applications that could never go
+green.
+
+**Defect 8. An HPA that can never be healthy, on a cluster with no metrics.**
+`istiod` reported `Synced/Degraded` for the life of the cluster, with no child
+resource unhealthy and a hard refresh making no difference. The live HPA said
+
+```
+AbleToScale=True    reason=SucceededGetScale
+ScalingActive=False  reason=FailedGetResourceMetric
+```
+
+and `kubectl get apiservice v1beta1.metrics.k8s.io` returned NotFound. kind ships
+no metrics-server, so the one HPA the istiod chart renders can never scale, and
+Argo CD reads that as Degraded. `autoscaleEnabled: false` in both copies of the
+istiod values removes it. Verified by rendering: `helm template istio/istiod
+1.30.3` with this repository's values file renders exactly one
+HorizontalPodAutoscaler, named `istiod`, and the line removes it.
+
+**Defect 9. A deprecated alias that the controller rewrites.**
+Git said `serving.kserve.io/deploymentMode: RawDeployment`; the live object said
+`Standard`. `constants.go` at tag v0.20.0 marks the alias `deprecated: use
+Standard` and `ParseDeploymentMode` normalises it, so the two are behaviourally
+identical - and `versions.yaml` said exactly that, as the reason for keeping the
+alias. What that note missed is that KServe writes the normalised value back, so
+git and the cluster could never agree and every InferenceService was OutOfSync
+for good. Behaviour is not the only thing a string in git decides.
+
+**Defects 10 and 11. Defaults the API server and the webhook fill in.**
+Three HTTPRoutes were OutOfSync because the Gateway API CRD defaults
+`parentRefs[].group`, `parentRefs[].kind`, `backendRefs[].group`,
+`backendRefs[].kind`, and `backendRefs[].weight`. Both InferenceServices were
+OutOfSync because KServe adds a `modelFormat` annotation, a finalizer, and
+`name: ""` plus `resources: {}` inside `spec.predictor.model`.
+
+The two are fixed differently on purpose. **A default that can be written is
+written**: the HTTPRoute manifests now spell out all five fields, and
+`kustomize build` output now matches the live object byte for byte. A finalizer
+cannot be written, because putting a controller's finalizer in git has Argo CD
+fight the controller for it, so the InferenceService fields go in
+`ignoreDifferences`.
+
+**Defects 12 and 13. Why only Kyverno's CRDs drifted.**
+Eleven Kyverno CRDs and all three ClusterPolicies were OutOfSync while the
+policies were Ready and enforcing. Diffing rendered chart output against the live
+objects gave two causes. The chart emits `labels: {}` and `annotations: {}`, and
+the API server drops empty maps, then adds `conversion: {strategy: None}` - that
+is why the other four CRD-shipping charts do not drift, they emit no empty maps.
+The ClusterPolicies pick up five schema defaults: `spec.admission`,
+`spec.background`, `spec.emitWarning`, `spec.rules[].skipBackgroundRequests`, and
+`spec.rules[].validate.allowExistingViolations`.
+
+The `ignoreDifferences` block for this one was tested on the live cluster before
+being committed: patched onto the running Application, `kyverno` went from
+`OutOfSync` with 14 drifting resources to `Synced/Healthy` with **0**.
+
+**A fix that did not work, recorded because it looked obvious.**
+`ServerSideDiff=true` is the documented Argo CD option for exactly this class,
+and Argo CD here is v3.5.1, well past the version that introduced it. Patched
+onto the live `model-local` Application with a hard refresh, all three of its
+OutOfSync resources stayed OutOfSync. It is not in any manifest in this
+repository. Reading the version number would have produced a confident and wrong
+commit message.
+
+**Defect 14. `kubectl wait --all` is the wrong instrument, and it is gone.**
+The two `--all` waits in `wait-for-sync.sh` reported per object - run 2's log has
+7 `condition met` lines and 9 `timed out` lines - gave no progress for the whole
+timeout, and then failed all at once. Run 2 also took 63 minutes of wall clock
+against a 30 minute timeout, and the log does not say where the extra time went.
+That is not understood, and it is recorded rather than explained.
+
+Both waits are replaced by one loop that asserts what the criterion needs: every
+Application `Synced` **and** `Healthy` in the same sample, three samples running.
+It prints the laggards as they change, so a failed run names its cause. Checked
+against the live cluster with a 20 second budget: exit 1, and the message named
+`istiod=Synced/Degraded`, `keycloak=OutOfSync/Healthy`,
+`model-local=OutOfSync/Healthy`.
+
+## CI, first run 2026-08-20
+
+Pushing this branch never triggered CI: `.github/workflows/ci.yml` runs on
+`pull_request` and on `push` to `main`, and `main` held a different project.
+Fast-forwarding `main` triggered run `32315429345`, the first CI run this
+repository has ever had.
+
+| Job | Result |
+|---|---|
+| `lint` | success |
+| `policy` | success |
+| `observability` | failure, on one test out of 24 |
+| `smoke` | cancelled by its own `timeout-minutes: 45` |
+
+The infrastructure was not the problem. In the `observability` job, `Create
+cluster`, `Install tools`, `Add helm repos`, `Install platform`, `Deploy the CI
+model`, and `Install observability` all succeeded on an `ubuntu-24.04-arm`
+runner. Both failures are in the test suites.
+
+### The one failing test, and it was not about Tempo
+
+```
+not ok 21 tempo answers ready through its service, so the collector has a target
+# (in test file tests/smoke/05-observability.bats, line 189)
+#   `[[ "$output" == *200* ]]' failed
+```
+
+Line 188, `[ "$status" -eq 0 ]`, passed. Only the output check failed.
+
+Reproduced locally the same day: Tempo answers `/ready` with `HTTP=200` and body
+`ready`. The test was wrong. It asserted on the output of `kubectl run --rm -i`,
+and that output is not reliable - kubectl cannot always attach, in which case it
+streams logs instead, and `--rm` can delete the pod before the logs are read:
+
+```
+warning: couldn't attach to pod/tempo-ready-body-71683, falling back to
+streaming logs: error attaching to container: no running task found
+```
+
+`kubectl run` still exits 0. Running the test's exact command locally printed no
+`200` at all, only kubectl's session banner and `pod ... deleted`.
+
+`tests/smoke/03-identity.bats` records this same race and was already written to
+read only the exit code. This test was not. It now asserts inside the pod and
+reads the exit code, and its pod name gains `$$` so an interrupted run cannot
+make the next one fail with `already exists`. Checked both ways against a live
+cluster: it passes, and the same shape against a path Tempo answers 404 for
+exits 1.
+
+Of the five tests in `tests/contract/01-openai-api.bats`, all five passed. The
+reasoning-model failure recorded earlier in this document did not appear, because
+the CI job deploys `models/ornith-9b/overlays/ci`, a different model. This was
+the first thing predicted as the likely cause of the CI failure, and it was
+wrong.
+
+### The 39-minute silent hang
+
+`smoke` ran tests 1 to 28 in about twenty seconds, failed test 29
+(`a valid token is accepted`, expecting 200) at `00:03:50Z`, then printed nothing
+until GitHub cancelled the job at `00:43:18Z`.
+
+Test 30 is acceptance criterion 4, the 429 test, and it was
+
+```bash
+for i in $(seq 1 40); do
+  code=$(chat "$token" 64)
+  [ "$code" = "429" ] && break
+done
+```
+
+with `chat()` calling `curl` with **no `--max-time`**. A count is not a bound when
+each iteration can take arbitrarily long. Forty unbounded completions is where
+the forty minutes went.
+
+Four things in that one file, all fixed:
+
+1. `chat()` now passes `--max-time 120`. A 64-token completion that takes longer
+   than two minutes is a fault this suite should report, not wait out.
+2. The 429 loop is bounded by a wall clock as well as a count, and it reports
+   every HTTP code it saw. The old form asserted on the last code only, so a run
+   where every request returned 500 was indistinguishable from a quota that never
+   ran out.
+3. Nothing waited for the model to load before asserting 200, which is why test
+   29 failed seconds after the platform finished installing. The
+   `observability` job on the same commit needed 53 seconds to reach `readiness
+   becomes true and the model answers`. There is now a readiness gate.
+4. This was the one suite of twelve that never got `require_cluster`.
+
+`get_token` in `tests/lib/helpers.bash` also gained `--max-time 30`, for the same
+reason: every caller sits inside a deadline, and a hung token request spends all
+of it without saying anything.
 
 ## Safety notes
 

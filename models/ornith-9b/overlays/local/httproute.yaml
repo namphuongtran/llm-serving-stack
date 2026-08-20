@@ -14,7 +14,14 @@ metadata:
   name: ornith-9b-openai
   namespace: llm
 spec:
-  parentRefs: [{ name: llm, namespace: istio-system }]
+  # group, kind, and weight below are written out even though they are the
+  # Gateway API CRD's own defaults. The API server fills them in, so a manifest
+  # that omits them can never match the live object, and Argo CD reported these
+  # routes OutOfSync for the life of the cluster (observed 2026-08-20). Read
+  # from the live HTTPRoute the same day: parentRefs gained
+  # group=gateway.networking.k8s.io and kind=Gateway, and backendRefs gained
+  # group="", kind=Service, and weight=1.
+  parentRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: llm, namespace: istio-system }]
   hostnames: ["llm.localtest.me"]
   rules:
     - matches:
@@ -28,8 +35,11 @@ spec:
         # zero-weight backend (Envoy issue 5891). Core Gateway API has no
         # failover primitive; a real one needs an Envoy aggregate cluster
         # via EnvoyFilter, which is out of scope for phase 1.
-        - name: ornith-9b-predictor
+        - group: ""
+          kind: Service
+          name: ornith-9b-predictor
           port: 80
+          weight: 1
       timeouts:
         # Streaming answers run for tens of seconds. The default is far too
         # short and truncates responses mid-sentence.

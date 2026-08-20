@@ -31,9 +31,19 @@ setup() {
     || fail "not a NotFound, so this proves nothing about Knative: $output"
 }
 
-@test "default deployment mode is RawDeployment" {
+# CHANGED 2026-08-20, from `RawDeployment` to `Standard`. This test is the
+# reason versions.yaml gave for keeping the legacy alias, so it is named here.
+# constants.go at tag v0.20.0 marks `RawDeployment` "deprecated: use Standard",
+# and KServe rewrites it on read. On the declarative path that rewrite made
+# every InferenceService permanently OutOfSync, because git said one string and
+# the cluster reported the other.
+#
+# What this test can and cannot see: it reads the value back out of the
+# ConfigMap this repository wrote, so it catches a values key that never reached
+# the ConfigMap, and nothing more. It is not evidence about how KServe behaves.
+@test "default deployment mode is Standard" {
   run bash -c "kubectl --context $KUBECTL_CONTEXT get cm -n kserve inferenceservice-config -o jsonpath='{.data.deploy}' | jq -r .defaultDeploymentMode"
-  [ "$output" = "RawDeployment" ]
+  [ "$output" = "Standard" ]
 }
 
 @test "Gateway API is enabled, not left at the default false" {

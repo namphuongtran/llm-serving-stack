@@ -18,6 +18,18 @@
 
 profile: ambient
 
+# No HPA for istiod. kind has no metrics-server, so the HPA the chart renders
+# can never scale: on 2026-08-20 the live object reported
+#   ScalingActive=False  reason=FailedGetResourceMetric
+# and `kubectl get apiservice v1beta1.metrics.k8s.io` returned NotFound. Argo CD
+# reads that as Degraded, which held the istiod Application Degraded for the
+# life of the cluster and blocked clusters/local-kind/wait-for-sync.sh.
+#
+# Verified by rendering, not by reading the key name. `helm template istio/istiod
+# 1.30.3` with this file renders exactly one HorizontalPodAutoscaler, named
+# `istiod`, and adding this line removes it.
+autoscaleEnabled: false
+
 # extensionProviders is not in the istiod chart's own values.yaml, so it was
 # not obvious this would work. Confirmed by rendering rather than by reading
 # docs, on 2026-08-19:

@@ -121,11 +121,21 @@ kserve:
   #     --set kserve.controller.gateway.ingressGateway.enableGatewayApi=true \
   #     --set kserve.controller.gateway.ingressGateway.kserveGateway=kserve/kserve-ingress-gateway
   # (this repo passes the same settings via platform/20-kserve/values-kserve.yaml
-  # instead of --set, and uses the legacy alias "RawDeployment" for
-  # deploymentMode because tests/smoke/04-kserve.bats asserts that literal
-  # string; kserve/pkg/constants normalises RawDeployment to Standard at read
-  # time, so the two strings are behaviourally identical - confirmed by reading
-  # kserve/pkg/constants/constants.go at tag v0.20.0.)
+  # instead of --set.)
+  #
+  # CORRECTED 2026-08-20. This note used to say the repo "uses the legacy alias
+  # RawDeployment for deploymentMode because tests/smoke/04-kserve.bats asserts
+  # that literal string", and that the two strings are "behaviourally
+  # identical". The second half was right and is still right: constants.go at
+  # tag v0.20.0 marks RawDeployment "deprecated: use Standard" and
+  # ParseDeploymentMode normalises it, so KServe behaves the same either way.
+  #
+  # What that reasoning missed is that behaviour is not the only thing a string
+  # in git decides. KServe writes the normalised value back onto the object, so
+  # git said RawDeployment while the cluster reported Standard, and Argo CD
+  # reported every InferenceService OutOfSync for the life of the cluster. That
+  # was invisible until the declarative path was first run, on 2026-08-20. Both
+  # copies now say Standard, and 04-kserve.bats asserts Standard.
   charts:
     - "oci://ghcr.io/kserve/charts/kserve-crd:v0.20.0"                    # sha256:92deb742d22aaf295f4fd86d5c2595cbf08b14b6916760bfb16875b20761ee0d
     - "oci://ghcr.io/kserve/charts/kserve-resources:v0.20.0"              # sha256:956c4860374fd83fc5702f23905e37a60c0470783356c2fe8b2e8363ca20572b

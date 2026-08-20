@@ -22,6 +22,37 @@ spec:
     - repoURL: https://github.com/namphuongtran/llm-serving-stack
       targetRevision: main
       path: policy
+  # Eleven CRDs and all three ClusterPolicies reported OutOfSync for the life of
+  # the cluster on 2026-08-20, while the policies themselves were Ready and
+  # enforcing. Both causes are defaults, read by diffing live objects against
+  # rendered output the same day.
+  #
+  # The CRDs: this chart emits `labels: {}` and `annotations: {}`, the API server
+  # drops empty maps, and it adds `conversion: {strategy: None}`. This is why
+  # only kyverno's CRDs drift and the other four charts' do not - they emit no
+  # empty maps. Ignoring the two metadata maps wholesale would normally hide a
+  # real label change; here the chart declares them empty, so there is nothing
+  # to hide.
+  #
+  # The ClusterPolicies: five schema defaults. jqPathExpressions rather than
+  # jsonPointers for the last two, because they sit inside an array and a
+  # pointer cannot match every element.
+  ignoreDifferences:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      jsonPointers:
+        - /metadata/labels
+        - /metadata/annotations
+        - /spec/conversion
+    - group: kyverno.io
+      kind: ClusterPolicy
+      jsonPointers:
+        - /spec/admission
+        - /spec/background
+        - /spec/emitWarning
+      jqPathExpressions:
+        - .spec.rules[].skipBackgroundRequests
+        - .spec.rules[].validate.allowExistingViolations
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     retry:

@@ -181,12 +181,29 @@ start_grafana_portforward() {
 # > **Untried (2026-08-19):** that any span ever reaches Tempo. Nothing
 # > produces one yet. When gateway tracing lands, the test to add here is a
 # > TraceQL query returning at least one trace after tests/contract/ has run.
+#
+# The assertion runs INSIDE the pod, and this test reads only the exit code.
+# CORRECTED 2026-08-20, on the first CI run this repository ever had. It was the
+# only failure in 24 tests, and Tempo was not the problem: reproduced locally the
+# same day, /ready returned `HTTP=200` with body `ready`.
+#
+# The test was. It asserted `[[ "$output" == *200* ]]` on the output of
+# `kubectl run --rm -i`, and that output is not reliable. kubectl cannot always
+# attach, in which case it falls back to streaming logs, and `--rm` can delete
+# the pod before the logs are read. Reproduced verbatim:
+#   warning: couldn't attach to pod/... falling back to streaming logs:
+#   error attaching to container: no running task found
+# `kubectl run` still exits 0, so line 188's status check passed and only the
+# output check failed. tests/smoke/03-identity.bats:78-84 records the same race
+# and was already written this way; this test was not.
+#
+# The pod name also gains $$. It was fixed, so a pod left behind by an
+# interrupted run makes the next run fail with `already exists`.
 @test "tempo answers ready through its service, so the collector has a target" {
-  run k -n observability run tempo-ready-probe --rm -i --restart=Never \
+  run k -n observability run tempo-ready-probe-$$ --rm --attach --restart=Never --quiet \
     --image=curlimages/curl:8.21.0@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84 \
-    --command -- curl -sf -o /dev/null -w '%{http_code}' http://tempo.observability.svc.cluster.local:3200/ready
-  [ "$status" -eq 0 ]
-  [[ "$output" == *200* ]]
+    --command -- sh -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' http://tempo.observability.svc.cluster.local:3200/ready)\" = 200 ]"
+  [ "$status" -eq 0 ] || fail "tempo /ready did not answer 200 through its Service; the collector's exporter has no target. Output: $output"
 }
 
 # Added 2026-08-19 with the gateway tracing change. Three tests, in the order a
