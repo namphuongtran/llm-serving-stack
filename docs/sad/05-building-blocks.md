@@ -128,7 +128,7 @@ graph TB
 | `HTTPRoute ornith-9b-openai` | `models/ornith-9b/overlays/local/httproute.yaml` | The `/v1` prefix, the backend Service, and a 600s request timeout because streaming answers run long |
 | `AuthPolicy llm-jwt` | `security/oidc/authpolicy.yaml` | JWT verification against `http://llm.localtest.me/realms/llm`, and extraction of `auth.identity.tier` |
 | `TokenRateLimitPolicy llm-token-quota` | `security/oidc/tokenratelimitpolicy.yaml` | Two limits keyed on the tier claim: free 500 tokens per 60s, pro 100000 per 60s |
-| `ServingRuntime llamacpp-arm64` | `runtimes/llamacpp-arm64/servingruntime.yaml` | The engine: image, args, ports, probes, resources. **No model fact appears here** |
+| `ServingRuntime llamacpp-arm64` | `runtimes/llamacpp-arm64/servingruntime.yaml` | The engine: image, args, ports, probes. No model **name** appears here. Its `resources` block does carry a model fact: 8Gi requests and 12Gi limits are sized for a 9B Q4 model, and `fallback-small` overrides them to 1Gi and 2Gi |
 | `InferenceService ornith-9b` | `models/ornith-9b/base/inferenceservice.yaml` | The model: format `gguf`, runtime name, and `--alias ornith-9b`. **No engine fact appears here** |
 | `ScaledObject ornith-9b` | `models/ornith-9b/overlays/local/scaledobject.yaml` | Scaling on `llmstack:requests_waiting`, threshold 2, between 2 and 3 replicas |
 | `PodDisruptionBudget ornith-9b` | `models/ornith-9b/overlays/local/pdb.yaml` | `minAvailable: 1`, so a node drain cannot take the service out |

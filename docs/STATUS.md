@@ -600,9 +600,9 @@ of run 1's seven.
 
 All thirteen fixes are in. The re-run that would settle this criterion is owed.
 
-Criterion 9 now holds, and the whole history fits in one table. Pushing a branch
-never triggered CI, because the workflow runs on `pull_request` and on `push` to
-`main`. Fast-forwarding `main` triggered the first CI run this repository ever
+Criterion 9 does not hold, and the whole history fits in one table. Pushing a
+branch never triggered CI, because the workflow runs on `pull_request` and on
+`push` to `main`. Fast-forwarding `main` triggered the first CI run this repository ever
 had. Read with `gh run list --branch main`, 2026-08-20:
 
 | Run | Time (UTC) | Commit | Result |
@@ -614,7 +614,6 @@ had. Read with `gh run list --branch main`, 2026-08-20:
 | 32324040807 | 2026-08-20 02:16 | `35f42df` | **success** |
 | 32324328098 | 2026-08-20 02:21 | `0a4bef5` | **success** |
 | 32326772197 | 2026-08-20 03:02 | `891b255` | **success** |
-
 | 32336384415 | 2026-08-20 05:38 | `b5b2976` | **failure** |
 | 32338396051 | 2026-08-20 06:07 | `0268848` | **failure** |
 
@@ -669,6 +668,11 @@ git ls-files -z | xargs -0 grep -n '\*\*Unmeasured (20'
 which returned **15** on 2026-08-19, across 12 files. Each marker names the
 command that settles it.
 
+**Re-measured 2026-08-20 against tracked files: 18 markers across 14 files.**
+The 15 above is 2026-08-19's number, and it was quoted forward for a day. That
+is the one thing this section exists to forbid. Run the command; do not read the
+last number somebody wrote here.
+
 It returned 14 earlier the same day. The twelfth file is
 `docs/deployment-walkthrough.md`, and its marker owes the one number the run could
 not produce: the `max_tokens` at which this model emits `content` rather than only
@@ -703,10 +707,18 @@ restructured. Still 12, still across seven files, but not the same seven.**
 table and this file say that instead. `docs/sad/07-deployment-view.md` brought
 one, because no GPU cluster has ever been created from this repository. Both
 files are named in the list above only in the sense that "this one" now means
-`docs/STATUS.md` rather than `README.md`. The current seven are:
+`docs/STATUS.md` rather than `README.md`.
+
+**That list was wrong in both of its forms, and re-measuring is what showed it.**
+The prose above names seven files including this one and omits
+`docs/sad/07-deployment-view.md`. The block that used to sit here named seven
+including `07-deployment-view.md` and omitted this one. Neither set is the real
+one. Re-measured 2026-08-20 against tracked files, there are **13 markers across
+eight files**:
 
 ```
 .github/workflows/ci.yml                  4
+docs/STATUS.md                            1
 docs/sad/07-deployment-view.md            1
 platform/10-istio/telemetry.yaml          1
 platform/12-kyverno/install.sh            1
@@ -715,12 +727,13 @@ tests/contract/01-openai-api.bats         1
 tests/smoke/05-observability.bats         2
 ```
 
-Run against tracked files alone the command returns **11**, because `docs/sad/`
-is not yet committed. Commit it and the two numbers agree again. The `Unmeasured`
-command moved the same way and for the same reason: **16** across 13 files
-counting the new documents, **15** across 12 counting tracked files only, with
-the thirteenth being `docs/sad/10-quality-requirements.md`, which owes every
-benchmark number.
+That paragraph used to add that the tracked-file count was **11**, because
+`docs/sad/` was not yet committed, and that committing it would make the two
+numbers agree. `docs/sad/` **is** committed now (`git ls-files docs/sad/`), so
+there is one number rather than two, and it is 13 rather than 12. The
+`Unmeasured` command moved the same way: it read **16** across 13 files counting
+the then-uncommitted documents and **15** across 12 counting tracked files only,
+and against tracked files on 2026-08-20 it reads **18 across 14**.
 
 It was 13 across eight files earlier the same day. The one that went is
 `docs/deployment-walkthrough.md`'s, which asked whether Argo CD applies the

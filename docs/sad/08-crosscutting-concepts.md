@@ -28,7 +28,7 @@ graph TB
 
 | # | Boundary | The rule | How it is kept |
 |---|---|---|---|
-| 1 | **The model is a variable** | A model name must never appear in `runtimes/`. Changing models touches `models/<model>/` and nothing else | `runtimes/llamacpp-arm64/servingruntime.yaml` names no model; `models/ornith-9b/base/model.yaml` holds every model fact |
+| 1 | **The model is a variable** | A model name must never appear in `runtimes/`. Changing models should touch `models/<model>/` and nothing else | `runtimes/llamacpp-arm64/servingruntime.yaml` names no model; `models/ornith-9b/base/model.yaml` holds every model fact. **Two breaks today:** `security/oidc/` targets the route `ornith-9b-openai` by name, so a new model needs new policies or it is unprotected; and `platform/30-observability/recording-rules.yaml` sums every model into one `llmstack:requests_waiting`, which is what `scaledobject.yaml` scales on |
 | 2 | **The engine is swappable** | Everything above the engine is engine independent | `tests/contract/` exists only to keep it that way |
 | 3 | **Metrics are normalised** | Dashboards, alerts, and the KEDA trigger read only `llmstack:*`, never a raw engine series | `platform/30-observability/recording-rules.yaml` |
 | 4 | **Delivery is pull based** | `task local:up` applies exactly two things by hand: Argo CD, and `clusters/local-kind/root-app.yaml` | `clusters/local-kind/` |

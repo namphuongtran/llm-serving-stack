@@ -18,7 +18,7 @@ it is a wish.
 | 1 | `task local:up` takes an empty machine to a ready service | **holds** (2026-08-20), run 4, 17m09s, exit 0 | `task local:down && task local:up` |
 | 2 | A JWT obtained from Keycloak returns a streamed chat completion | **holds** (2026-08-19) | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
 | 3 | A request without a JWT is rejected with 401 | **holds** (2026-08-19) idle; **degrades under load**, 500 not 401 | `bats tests/smoke/06-auth-quota.bats` |
-| 4 | Exceeding the token quota returns 429 | **holds** (2026-08-20), in CI only | `bats tests/smoke/06-auth-quota.bats` |
+| 4 | Exceeding the token quota returns 429 | **holds** (2026-08-20), in CI and locally | `bats tests/smoke/06-auth-quota.bats` |
 | 5 | Grafana shows TTFT p95 and requests waiting from real traffic | untested | `bats tests/smoke/05-observability.bats` |
 | 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | **partly** (2026-08-20): `spec.replicas` reached 3, the third pod cannot schedule, and the test would pass | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, the PDB holding | untested | `bats tests/smoke/08-availability.bats` |
@@ -52,8 +52,9 @@ Measured 2026-08-20 06:55Z: one ~500-token prompt returned
 
 | Attribute | Scenario | Mechanism | Evidence today |
 |---|---|---|---|
-| **Security** | An unauthenticated caller reaches `/v1/*` | `AuthPolicy` verifies the JWT at the gateway; nothing reaches the engine | Criterion 3 holds |
-| **Cost control** | One caller spends the whole budget | `TokenRateLimitPolicy` counts `usage.total_tokens` per tier | Criterion 4 holds in CI |
+| **Security** | An unauthenticated caller reaches `/v1/*` **through the gateway** | `AuthPolicy` verifies the JWT at the gateway, so nothing reaches the engine on that path | Criterion 3 holds |
+| **Security** | A pod inside the cluster calls `ornith-9b-predictor` directly | **Nothing does.** This repository holds no `NetworkPolicy` and no Istio `AuthorizationPolicy`; ambient mode gives mTLS, which is not authorisation. The in-cluster path carries neither auth nor quota | Unmitigated. `git grep 'kind: AuthorizationPolicy\|kind: NetworkPolicy'` returns nothing (2026-08-20) |
+| **Cost control** | One caller spends the whole budget | `TokenRateLimitPolicy` counts `usage.total_tokens`. The counter is keyed on the `tier` claim, not the caller, so clients sharing a tier share one budget | Criterion 4 holds in CI and locally |
 | **Availability** | A node is drained | Two replicas on two nodes, `PodDisruptionBudget` with `minAvailable: 1`, 120s grace and a 15s `preStop` | Criterion 7 untested |
 | **Elasticity** | The queue grows | KEDA scales on `llmstack:requests_waiting`, threshold 2, between 2 and 3 replicas | Criterion 6 untested |
 | **Observability** | An operator asks whether the service is keeping up | `llmstack:*` recording rules, a Grafana dashboard, and a client-side TTFT prober | Criterion 5 untested |
