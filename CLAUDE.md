@@ -35,7 +35,8 @@ from 7.7 GiB to 23.2 GiB was the only change that unblocked it.
 What that run settles, and what it does not:
 
 - All thirteen layers came up on a 3-node `kind` cluster, and the service
-  answered a real request. Two of the nine acceptance criteria now hold.
+  answered a real request. That run settled two of the nine acceptance criteria.
+  Four of nine hold as of 2026-08-20; `docs/STATUS.md` is the count of record.
 - It used the **imperative path** (`platform/NN-*/install.sh`), not
   `task local:up`. Two things it needs were applied by hand: the CoreDNS manifest
   and the model overlay.

@@ -9,8 +9,9 @@ the command is the requirement: a criterion nobody can run is not a requirement,
 it is a wish.
 
 > **[`docs/STATUS.md`](../STATUS.md) is the authority for the status column.**
-> The statuses below were copied from it on **2026-08-20**. If the two ever
-> disagree, `STATUS.md` is right and this table is stale.
+> The statuses below were copied from it on **2026-08-20**, after criterion 9
+> went green. If the two ever disagree, `STATUS.md` is right and this table is
+> stale.
 
 | # | Criterion | Status (2026-08-20) | Command that settles it |
 |---|---|---|---|
@@ -22,11 +23,17 @@ it is a wish.
 | 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | untested | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, the PDB holding | untested | `bats tests/smoke/08-availability.bats` |
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
-| 9 | CI is green on an arm64 runner | fails (2026-08-20), `lint` and `policy` green | `gh run list` |
+| 9 | CI is green on an arm64 runner | **holds** (2026-08-20), four consecutive green runs | `gh run list` |
 
-Three of nine hold. The six that do not are not held up by the same thing:
-criteria 1 and 9 have run and failed, each on a named defect, and the other four
-have never been run.
+Four of nine hold. The five that do not are not held up by the same thing:
+criterion 1 has run and failed, on a named defect, and the other four have never
+been run.
+
+**Criterion 9 turned green on 2026-08-20**, at run `32323568376`, and has stayed
+green for four runs. Both of its earlier failures were defects in tests, not in
+the platform: both cluster jobs had already built a real `kind` cluster and
+installed the whole platform successfully before failing. `docs/STATUS.md`
+carries the run table.
 
 **Criterion 4 needs a caveat that is a limits decision, not a test bug.** The
 free tier is 500 tokens per 60-second window, and llama.cpp reports 0.55 tokens

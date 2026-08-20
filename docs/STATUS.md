@@ -4,10 +4,14 @@ This file is the tracked account of what this repository has actually
 observed, and what it has only written down. It is the single most important
 document here, and it is deliberately longer than the README.
 
-It moved out of `README.md` on 2026-08-20, unchanged. Nothing in it was
-rewritten, softened, or shortened in the move: the README had grown to the
-point where the status buried the introduction, and the introduction buried
-the status. `README.md` now carries a summary and links here.
+It moved out of `README.md` on 2026-08-20, unchanged. Nothing was rewritten,
+softened, or shortened **in the move itself**: the README had grown to the point
+where the status buried the introduction, and the introduction buried the
+status. `README.md` now carries a summary and links here.
+
+One thing changed **after** the move, later the same day, and it is a
+measurement rather than an edit: criterion 9 went green. It is recorded in
+place, with the run IDs, rather than smoothed into the surrounding text.
 
 ## Where the repository stands
 
@@ -22,10 +26,15 @@ a streaming chat completion. Argo CD reached the same working service from git
 on 2026-08-20. `docs/deployment-walkthrough.md` is the account, with every number
 dated, and `tools/step-up.sh` is how to repeat it one layer at a time.
 
-**Three of the nine phase 1 acceptance criteria now hold, and the six that do
-not are not held up by the same thing.** Criteria 1 and 9 have run and failed,
-each on a named defect. The other four are untested. The table under
-"What is unproven" says which is which.
+**Four of the nine phase 1 acceptance criteria now hold, and the five that do
+not are not held up by the same thing.** Criterion 1 has run and failed, on a
+named defect. The other four are untested. The table under "What is unproven"
+says which is which.
+
+Criterion 9 moved from failing to holding on 2026-08-20, and this paragraph said
+"three" and named criterion 9 among the failures until then. It was re-measured
+rather than reasoned about: `gh run list --branch main` shows seven CI runs ever,
+the first three failed, and the last four succeeded.
 
 Running it is what found the defects, and static review did not. The first run
 found seven that four separate review passes over the whole repository had all
@@ -70,8 +79,9 @@ so what follows is not a formality.
 
 ### The nine phase 1 acceptance criteria
 
-Two hold as of 2026-08-19. Settle the rest with `bats tests/` against a live
-cluster, then record the result and the date here.
+Two held on 2026-08-19, three on 2026-08-20, and four later the same day when
+CI went green. Settle the rest with `bats tests/` against a live cluster, then
+record the result and the date here.
 
 | # | Criterion | Status | Settle it |
 |---|---|---|---|
@@ -83,7 +93,7 @@ cluster, then record the result and the date here.
 | 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | untested | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, PDB holding | untested | `bats tests/smoke/08-availability.bats` |
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
-| 9 | CI is green on an arm64 runner | **fails 2026-08-20** on two tests in one file, down from a 45-minute timeout on the first run. `lint` and `policy` green | `gh run list`, after a push to `main` or a pull request |
+| 9 | CI is green on an arm64 runner | **HOLDS 2026-08-20.** Four consecutive green runs, all four jobs each. First green run `32323568376`; latest `32326772197` | `gh run list`, after a push to `main` or a pull request |
 
 Criterion 1 is the one to read carefully. It was run for the first time on
 2026-08-20, on a cluster created from empty, and it failed. Seven defects came
@@ -142,14 +152,35 @@ of run 1's seven.
 
 All thirteen fixes are in. The re-run that would settle this criterion is owed.
 
-Criterion 9 also moved. Pushing a branch never triggered CI, because the workflow
-runs on `pull_request` and on `push` to `main`. Fast-forwarding `main` triggered
-the first CI run this repository has ever had. `lint` and `policy` passed. The
-other two jobs each built a real `kind` cluster and installed the platform
-successfully, then failed in the test suites: one test asserted on output that
-`kubectl run --rm` does not reliably produce, and one unbounded loop hung a job
-for 39 minutes until its own timeout killed it. Both are fixed. Neither was a
-platform failure. Criterion 2 is met with one caveat recorded in
+Criterion 9 now holds, and the whole history fits in one table. Pushing a branch
+never triggered CI, because the workflow runs on `pull_request` and on `push` to
+`main`. Fast-forwarding `main` triggered the first CI run this repository ever
+had. Read with `gh run list --branch main`, 2026-08-20:
+
+| Run | Time (UTC) | Commit | Result |
+|---|---|---|---|
+| 32315429345 | 2026-08-19 23:57 | `f6ae1e4` | failure |
+| 32320604250 | 2026-08-20 01:19 | `adcc293` | failure |
+| 32320742653 | 2026-08-20 01:21 | `e62976f` | failure |
+| 32323568376 | 2026-08-20 02:08 | `fbb8208` | **success** |
+| 32324040807 | 2026-08-20 02:16 | `35f42df` | **success** |
+| 32324328098 | 2026-08-20 02:21 | `0a4bef5` | **success** |
+| 32326772197 | 2026-08-20 03:02 | `891b255` | **success** |
+
+Seven runs, the first three red and the last four green, with all four jobs
+green in each of the four. The runner is arm64, which the criterion asks for:
+`Image: ubuntu-24.04-arm`, image release `ubuntu24-arm64/20260817.96`, read out
+of run `32326772197`'s own log rather than out of the workflow file.
+
+**What the three red runs were, because the failures matter more than the
+count.** `lint` and `policy` passed in all of them. The other two jobs each
+built a real `kind` cluster and installed the whole platform successfully, then
+failed in the test suites: one test asserted on output that `kubectl run --rm`
+does not reliably produce, and one unbounded loop hung a job for 39 minutes
+until its own timeout killed it. Both are fixed. **Neither was a platform
+failure**, and that distinction is why the runner size was never the problem.
+
+Criterion 2 is met with one caveat recorded in
 `docs/deployment-walkthrough.md`: `tests/contract/01-openai-api.bats` passes 4 of
 5, and the failing one is about this model being a reasoning model, not about the
 API contract.

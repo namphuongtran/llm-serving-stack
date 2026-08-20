@@ -94,11 +94,12 @@ Every choice has an ADR in [`docs/adr/`](docs/adr/) with the evidence behind it.
 
 ## Status
 
-**Run for the first time on 2026-08-19.** Three of the nine phase 1 acceptance
+**Run for the first time on 2026-08-19.** Four of the nine phase 1 acceptance
 criteria hold. Thirteen layers came up on a 3-node `kind` cluster and the service
 answered a real request: 401 without a token, 200 with a JWT, and a streaming
-chat completion. Argo CD reached the same working service from git on 2026-08-20,
-and CI ran for the first time the same day.
+chat completion. Argo CD reached the same working service from git on 2026-08-20.
+CI ran for the first time the same day, failed three times, and has been green
+for four consecutive runs since.
 
 Eighteen defects came out of those runs, and static review had missed all of
 them. That is the point of the next link.
