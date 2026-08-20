@@ -1,0 +1,19 @@
+llm-serving-stack
+Copyright 2026 Nam Tran
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+This repository is infrastructure only: Kubernetes manifests, Helm values,
+shell scripts, Kyverno policies, bats tests, and a small Python benchmark
+harness. It builds and publishes no container image of its own, and it
+vendors no third-party source code.
+
+Every upstream component it installs is fetched at install time from that
+project's own chart or image registry, under that project's own licence, and
+is pinned in versions.yaml with the date the version was read. Nothing here
+redistributes those components.
+
+Trademarks: all product names, logos, and brands referenced in this project
+are the property of their respective owners. Third-party names appear only to
+identify the component a manifest installs, or to compare it with an
+alternative. This project is independent and is endorsed by none of them.

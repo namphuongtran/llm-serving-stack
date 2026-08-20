@@ -8,15 +8,22 @@ A Kubernetes LLM inference platform, built layer by layer, on `kind` locally and
 on GPU nodes later. It is infrastructure only: YAML, shell, and a small Python
 benchmark harness. It builds no container image of its own.
 
-Read `README.md` first. Its "What is unproven" and "What is proven" sections
-carry the nine phase 1 acceptance criteria in full, with the command that
-settles each one, and the sharp limit on what has actually been checked.
+Read `README.md` first for what this is, then `docs/STATUS.md` for what has
+actually been checked. `docs/STATUS.md`'s "What is unproven" and "What is
+proven" sections carry the nine phase 1 acceptance criteria in full, with the
+command that settles each one, and the sharp limit on what holds. Those two
+sections lived in `README.md` until 2026-08-20 and moved unchanged.
+
+`docs/sad/` is the architecture document: arc42 section order, C4 diagrams,
+twelve short files. It introduces no decision. Where it disagrees with an ADR,
+it is the bug, and where it disagrees with `docs/STATUS.md` about what has run,
+`docs/STATUS.md` wins.
 
 `docs/superpowers/` holds the design spec and the build plan. **It is a local
 working document and is not in git** (`.gitignore`), so a clone does not get
 it. Where it is cited below, the citation is marked. Anything in it that has to
-survive belongs in an ADR (`docs/adr/`), in `README.md`, or in a code
-comment.
+survive belongs in an ADR (`docs/adr/`), in `docs/sad/`, in `README.md`, or in
+a code comment.
 
 ## Current state, and why it matters for every claim you write
 
@@ -74,7 +81,7 @@ that passed while the thing they named was broken. Rendering is not admission,
 admission is not scheduling, and a passing test is not a working system. When you
 can run something, run it.
 
-`README.md`'s "What is unproven" section is the tracked account. Update it
+`docs/STATUS.md`'s "What is unproven" section is the tracked account. Update it
 whenever you change what is or is not verified. Do not write that something
 works because it renders. See "Evidence rules" below.
 
@@ -200,7 +207,7 @@ CI runs on `ubuntu-24.04-arm`.
 ## Evidence rules
 
 This repository is stricter than the default. The rules are stated in
-`README.md` and enforced throughout the documents.
+`README.md` and `docs/STATUS.md`, and enforced throughout the documents.
 
 - **A number without the date it was measured is invalid.** Re-measure. Do not
   quote a number forward.

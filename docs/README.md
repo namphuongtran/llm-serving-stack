@@ -1,6 +1,24 @@
 # Documentation
 
-Four kinds of document, with different jobs.
+Six kinds of document, with different jobs.
+
+## The architecture
+
+[`sad/`](sad/README.md) is the Software Architecture Document: the coherent
+picture across every view, in arc42 section order, with C4 diagrams. Twelve
+short files, each leading with a diagram.
+
+It introduces no decision of its own. Where it contradicts an ADR, it is the
+bug.
+
+## What is actually proven
+
+[`STATUS.md`](STATUS.md) is the tracked account of what has been observed and
+what has only been written down: the nine acceptance criteria with their status
+and their dates, the measurement markers, and the one capability that is doubted
+rather than merely unmeasured.
+
+Read it before trusting a green check anywhere in this repository.
 
 ## Why each layer exists
 
@@ -40,8 +58,10 @@ document and is not in git, so a clone does not get it.
 
 ## What has not run yet
 
-Every document above can name a gap in its own layer. The account across all
-of them is the "What is unproven" section of the repository root
-[`README.md`](../README.md). It states what is unproven, what is unverified by
-construction, and what is doubted on technical grounds rather than merely
+Every document above can name a gap in its own layer. The account across all of
+them is [`STATUS.md`](STATUS.md). It states what is unproven, what is unverified
+by construction, and what is doubted on technical grounds rather than merely
 unmeasured.
+
+It lived in the repository root [`README.md`](../README.md) until 2026-08-20 and
+moved here unchanged.
