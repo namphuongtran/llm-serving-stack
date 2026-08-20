@@ -333,9 +333,47 @@ its own webhook configurations when its admission controller is down**. With no
 webhook config there is no race to reproduce. KServe does not do this, which is
 why it is the honest reproduction and also why it is the one CI hit twice.
 
-> **Untried (2026-08-20):** whether this fixes CI. Three mutation tests pass
-> locally and no CI run has exercised the change yet. Criterion 9 stays flaky
-> until a run proves otherwise; see `gh run list --branch main`.
+### The first fix went red, and the reason is the point
+
+Run `32343704184` failed in both cluster jobs, and **not on the webhook**:
+
+```
+mktemp: too few X's in template 'apply-retry'
+```
+
+`mktemp -t apply-retry` is valid BSD, which is what macOS ships, and invalid GNU
+coreutils, which is what the runners ship. Verified afterwards inside this
+repository's own `kindest/node` container, GNU coreutils 9.7: the old form
+reproduces the CI error exactly and `mktemp "${TMPDIR:-/tmp}/apply-retry.XXXXXX"`
+works. Both forms work on macOS.
+
+**Why three passing mutation tests did not catch it.** All three used
+`apply_retry <file>`. The temp file exists only on the `apply_retry -` path, and
+every CI call site is a pipe. The tests exercised the branch that was already
+fine and never touched the branch that shipped broken.
+
+This is the mirror image of a defect this repository already records: the KServe
+install script died on bash 3.2 locally and CI could never have seen it, because
+runners have bash 5. Here the code worked on macOS and only Linux could see it.
+Both directions are real, which is why both paths have to run.
+
+A second bug surfaced in the same test round, on a third platform. Sourcing the
+helper from **zsh**, the macOS default shell a human would use, printed
+`trap: undefined signal: RETURN` and leaked the temp file, because zsh has no
+`RETURN` trap. The cleanup is now explicit at every return instead.
+
+Re-tested after both fixes, 2026-08-20:
+
+| Test | Result |
+|---|---|
+| stdin path, happy case, under `bash` and under `zsh` | exit 0, no trap error, **no temp file leaked** |
+| stdin path with the webhook down, restored after 25s | retried **29 attempts over 58s**, then created, exit 0 |
+| `mktemp` template under GNU coreutils 9.7 | old form errors, new form works |
+
+> **Untried (2026-08-20):** whether this fixes CI. Five mutation tests pass
+> locally, across bash, zsh, and GNU coreutils, and no CI run has yet gone green
+> on the change. Criterion 9 stays flaky until a run proves otherwise; see
+> `gh run list --branch main`.
 
 **And the changed script could not be run end to end here**, which is a separate
 finding worth its own line. `./platform/12-kyverno/install.sh` on this cluster
