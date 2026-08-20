@@ -23,10 +23,18 @@ setup() {
 # status 28. Recording what happened and carrying on is the entire point of the
 # loop below; a helper that aborts it defeats that.
 #
-# 240s, and the number comes from measurement rather than taste. A single
-# non-streaming 64-token completion against this model on this machine takes
-# well over 40 seconds, so the earlier 120s was tight enough to fire on a
-# healthy stack. The HTTPRoute itself allows 600s.
+# 240s, and the number comes from measurement rather than taste. llama.cpp
+# reports 0.55 tokens per second on this machine (see the 429 test below for the
+# log line), so a 64-token completion needs about 116 seconds of eval before
+# prompt processing. The first version of this fix used 120s, which would fire on
+# a healthy stack. 240s is roughly double the expected time; the HTTPRoute itself
+# allows 600s.
+#
+# One measurement that looks worse than this and should not be read that way:
+# a curl for a 64-token completion returned HTTP 000 after `--max-time 300` on
+# 2026-08-20. The two requests after it returned HTTP 500 in under a second, so
+# the server was already saturated by a concurrent bats run. That number is
+# contention, not latency, and it is not what 240 is derived from.
 chat() {
   local out rc
   out="$(curl -s --max-time 240 -o /dev/null -w '%{http_code}' "$BASE/v1/chat/completions" \
@@ -111,12 +119,19 @@ require_token() {
   #
   # security/oidc/tokenratelimitpolicy.yaml gives the free tier 500 tokens per
   # 60s window, and the counter only advances once a response reports its usage.
-  # So the budget can only be exceeded if the stack can generate more than 500
-  # tokens in 60 seconds. Measured on the local kind cluster on 2026-08-20, one
-  # non-streaming 64-token completion took over 120 seconds, which is under 0.53
-  # tokens per second. At that rate a 60 second window admits about 32 tokens
-  # against a 500 token budget, so no number of requests can trip it and the
-  # window resets first.
+  # So the budget can only be exceeded if the stack generates more than 500
+  # tokens in 60 seconds. It does not come close. llama.cpp's own timing log on
+  # the local kind cluster, 2026-08-20:
+  #   eval time = 12633.52 ms / 8 tokens (1804.79 ms per token,
+  #                                       0.55 tokens per second)
+  # 0.55 tokens per second is 33 tokens in a 60 second window, against a 500
+  # token budget. The window resets about fifteen times before the budget could
+  # be spent, so no number of requests trips it. A curl for one 64-token
+  # completion the same day returned HTTP 000 after `--max-time 300`, which says
+  # the same thing from the client side.
+  #
+  # This is a limits question, not a test bug. Settling criterion 4 locally needs
+  # either a free-tier budget in reach of this engine, or a faster engine.
   [ "$code" = "429" ] \
     || fail "the free tier never returned 429 after $attempts requests in $((SECONDS - started))s. Codes seen:$seen -- if these are all 200, compare the tokens this stack can generate in the policy's 60s window against its 500-token budget before treating it as a quota bug."
 }

@@ -817,6 +817,39 @@ Four things in that one file, all fixed:
 reason: every caller sits inside a deadline, and a hung token request spends all
 of it without saying anything.
 
+### Criterion 4 cannot be settled on this machine, and now there is a number
+
+Running the rewritten suite against the live cluster gave 4 passes and one
+failure, the 429 test. The bound worked exactly as intended: instead of 39
+minutes of silence, it stopped and named the cause.
+
+The cause is arithmetic, not a quota bug. `security/oidc/tokenratelimitpolicy.yaml`
+gives the free tier **500 tokens per 60s window**, and a token-based counter only
+advances once a response reports its usage. So the budget can only be spent if
+the stack generates more than 500 tokens inside 60 seconds. From llama.cpp's own
+timing log on 2026-08-20:
+
+```
+eval time = 12633.52 ms / 8 tokens (1804.79 ms per token, 0.55 tokens per second)
+```
+
+0.55 tokens per second is **33 tokens** in a 60 second window, against a **500
+token** budget. The window resets roughly fifteen times over before the budget
+could be spent.
+
+One number from that day should not be read as latency. A `curl` for a single
+64-token completion returned `HTTP 000` after `--max-time 300`, but the two
+requests after it returned `HTTP 500` in under a second, so the server was
+already saturated by a concurrent `bats` run. That is contention. The clean
+figure is the engine's own 0.55 tokens per second, which puts a 64-token
+completion at about 116 seconds of eval.
+
+So criterion 4 is not untested any more. It is **untestable as specified on this
+engine**, and settling it needs either a free-tier budget in reach of 0.55
+tokens per second or a faster engine. That is a decision about the limits, not a
+patch to the test, and the test says so in its failure message rather than
+leaving a red result to be misread as a broken AuthPolicy.
+
 ## Safety notes
 
 - **Check your context before running anything.** Every `platform/*/install.sh`
