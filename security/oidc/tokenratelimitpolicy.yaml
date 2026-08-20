@@ -8,11 +8,12 @@
 # the service-account UUID is minted fresh on each import. R13 in
 # docs/sad/11-risks-and-debt.md carries the full record.
 #
-# **Untried (2026-08-20):** whether `auth.identity.azp` resolves. `tier` does, on
-# the same mechanism, and both are claims in the same token. Settle it with a
-# live cluster: `bats tests/smoke/06-auth-quota.bats`, then confirm two clients
-# on one tier hold separate budgets by spending one to 429 and checking that a
-# second client on that tier still gets 200.
+# `azp` resolves only because authpolicy.yaml exports it. It did not on
+# 2026-08-20, when this file was changed and that one was not, and the quota
+# failed open for the length of one push. The reasoning that made it look safe
+# was that `tier` resolves on "the same mechanism" and both are claims in the
+# same token. Both halves were true and the conclusion was wrong: the mechanism
+# is the export, not the token. R25.
 #
 # Shape and apiVersion confirmed against the installed CRD, not carried over
 # from memory: `helm template` of kuadrant/kuadrant-operator --version 1.5.2

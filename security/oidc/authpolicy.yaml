@@ -37,3 +37,10 @@ spec:
             json:
               properties:
                 tier: { selector: auth.identity.tier }
+                # Only what this block exports is visible to the CEL in
+                # tokenratelimitpolicy.yaml. Measured 2026-08-21: with the
+                # counter keyed on an unexported claim the gateway logged
+                # `CelError::Resolve { NoSuchKey("azp") }` on every request and
+                # counted nothing, so the quota failed open. `azp` is in the
+                # token; being in the token is not enough. R25.
+                azp: { selector: auth.identity.azp }
