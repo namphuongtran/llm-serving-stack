@@ -30,12 +30,42 @@ What that run settles, and what it does not:
 - All thirteen layers came up on a 3-node `kind` cluster, and the service
   answered a real request. Two of the nine acceptance criteria now hold.
 - It used the **imperative path** (`platform/NN-*/install.sh`), not
-  `task local:up`. So the pull-based path is still unobserved, and criterion 1 is
-  still open. Two things it needs were applied by hand: the CoreDNS manifest and
-  the model overlay.
+  `task local:up`. Two things it needs were applied by hand: the CoreDNS manifest
+  and the model overlay.
 - `docs/deployment-walkthrough.md` is the account, with a dated number for every
   layer, and `docs/deployment-log.tsv` is the raw log. `tools/step-up.sh` repeats
   the run one layer at a time with a memory guard.
+
+**The pull-based path ran on 2026-08-20**, three times, and CI ran for the first
+time the same day. Criterion 1 is still open, but for reasons that are now measured
+rather than unknown. Read "The pull-based path" in
+`docs/deployment-walkthrough.md` before touching `clusters/local-kind/`.
+
+- Run 3 **exited 0** with all sixteen Applications `Synced` and `Healthy`, and
+  the gateway served `/v1/models` to a caller with no token. Read that sentence
+  twice before trusting a green Argo CD anywhere in this repository. The Kuadrant
+  operator had started before the Gateway API CRDs existed, caches that, and
+  refuses every policy until restarted by hand; nothing crashed, so nothing
+  restarted it.
+- So `task local:up` now ends with `clusters/local-kind/verify-serving.sh`, which
+  asserts the request path: 401 without a token, then 200 with a real JWT. Do not
+  weaken that to "not 200" - 503 is the fail-closed case and would satisfy it.
+- Run 2 reached a working service through Argo CD but exited non-zero, on
+  Applications that could never report Synced or Healthy.
+- Eighteen defects came out of those three runs and none was visible from the
+  imperative path. The two worth knowing before you edit anything here: Argo CD
+  applies **client-side** by default, which writes each manifest into a
+  262144-byte annotation, and five of these fifteen charts ship CRDs larger than
+  that; and an Application that fails to read its git path still reports
+  `health.status: Healthy`, which broke both the acceptance check and sync-wave
+  ordering.
+- So `.status.health.status` is not evidence that an Application did anything.
+  `clusters/local-kind/wait-for-sync.sh` is the check, and it reads sync status,
+  counts the children against the directory, and requires every Application green
+  in the same sample.
+- Criterion 4 moved from untested to **untestable on this engine**: the free tier
+  is 500 tokens per 60s window and llama.cpp reports 0.55 tokens per second here,
+  which is 33 tokens per window. That is a limits decision, not a test bug.
 
 **The lesson to carry, not just the status.** That run found seven defects which
 four separate static review passes over the whole repository had all missed: a
@@ -221,6 +251,26 @@ workflow's own comments are the tracked account, including four `Untried`
 records. The design behind it,
 `docs/superpowers/specs/2026-08-19-ci-coverage-design.md`, is a local working
 document and is not in git.
+
+**CI first actually ran on 2026-08-20.** Until then nothing had triggered it: the
+workflow runs on `pull_request` and on `push` to `main`, and `main` held an
+unrelated project, so pushing a branch triggered nothing. Fast-forwarding `main`
+started run `32315429345`.
+
+What it settled. `lint` and `policy` pass. Both cluster jobs create a real `kind`
+cluster and install the whole platform successfully on `ubuntu-24.04-arm`, so the
+runner size is not the problem. Both then failed **in the test suites**, and both
+failures were defects in tests rather than in the platform:
+
+- a test asserted on the output of `kubectl run --rm -i`, which kubectl does not
+  reliably produce - it falls back to streaming logs when it cannot attach, and
+  `--rm` can delete the pod first. It still exits 0.
+- an unbounded loop of unbounded `curl` calls hung the `smoke` job for 39 minutes
+  until `timeout-minutes: 45` killed it. A count is not a bound when each
+  iteration can take arbitrarily long.
+
+The lesson for anything you add here: **give every request a `--max-time` and
+every loop a wall clock**, and never assert on the stdout of a `--rm` pod.
 
 The `Record the runner size` step in each cluster job prints `nproc`,
 `free -h`, and `df -h`. Quote those, dated by the run, rather than repeating

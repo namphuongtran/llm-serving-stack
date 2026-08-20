@@ -850,6 +850,226 @@ tokens per second or a faster engine. That is a decision about the limits, not a
 patch to the test, and the test says so in its failure message rather than
 leaving a red result to be misread as a broken AuthPolicy.
 
+### Criterion 4 holds, in CI, and the local result was not the whole story
+
+The rewritten `06-auth-quota.bats` ran in CI run `32320742653` and
+
+```
+ok 30 the free tier is cut off with 429 once its token budget is spent
+```
+
+passed in 6.3 seconds. So the AuthPolicy, the TokenRateLimitPolicy, and
+Limitador all do what criterion 4 asks. What could not be shown locally was not
+the quota; it was that this laptop's engine cannot generate 500 tokens inside a
+60 second window. CI deploys `models/ornith-9b/overlays/ci`, and that model can.
+
+The `smoke` job also went from **45 minutes, killed by its own timeout** to
+**7 minutes 30 seconds** and a clean pass/fail. Two tests failed, both in
+`tests/contract/02-readiness.bats`, and both were defects in the test:
+
+- `readiness becomes true and the model answers` called `/v1/models` with **no
+  bearer token**. That works in the `observability` job, which never installs
+  Kuadrant, and returns 401 in the `smoke` job, which applies
+  `security/oidc/authpolicy.yaml`. The same test passed in one job and failed in
+  the other on the same commit. `tests/contract/01-openai-api.bats` already sent
+  a token; this suite did not.
+- `readiness is false while weights are still loading` deleted the predictor
+  pods, slept 5 seconds, and read `.items[0]`. That is whichever pod the API
+  server lists first, which after a `--wait=false` delete is often the OLD pod,
+  still `ready: true`. It is also vacuous in the other direction: before the new
+  container starts there is no `containerStatuses` entry at all, so the query
+  returns an empty string, and an empty string is not `true`. **The old
+  assertion passed on having observed nothing.** It now identifies the
+  replacement pod by name, waits for a readiness value to exist, and requires
+  that value to be `false`.
+
+### Defect 15. One flaky clone took four Applications down with it
+
+Run 3 stalled with 11 of 16 Applications `Synced/Healthy` and the rest blocked
+behind `gateway-api-crds`, which reported
+
+```
+ComparisonError - DeadlineExceeded desc = context deadline exceeded
+```
+
+on every attempt, leaving **0** Gateway API CRDs installed. Nothing that
+declares an `HTTPRoute` can sync without them, so `istio-gateway`, `keycloak`,
+`model-local`, and `security-oidc` all sat OutOfSync. One dependency at the head
+of the order took four with it.
+
+The numbers, all measured 2026-08-20:
+
+| | |
+|---|---|
+| Deadline the repo-server was given | **60s**, read from its own gRPC log lines |
+| Shallow clone of `gateway-api` v1.5.1 from this machine | **12s**, 21 MB on disk |
+| Size of the repo Argo CD clones | 30011 KB |
+| Size of the release file the imperative path fetches instead | 1024333 bytes |
+
+So the repository is not too big to clone in 60 seconds. Sixteen Applications
+generating manifests at once on a laptop is the cause, and run 2 reached Synced
+on the same Application, which is worse than a consistent failure because it
+makes the fault look random.
+
+`platform/50-argocd/install.sh` now sets
+`controller.repo.server.timeout.seconds=180` and
+`reposerver.parallelism.limit=4`, one for each half of that. Both were verified
+by rendering the chart with the script's own flags and reading
+`argocd-cmd-params-cm` out of the output.
+
+This is also the widest two-path divergence in the repository. The imperative
+path runs one `kubectl apply -f <release URL>` and fetches a single 1 MB file.
+The declarative path clones 30 MB of Go source, docs, and tests to read one
+directory, because an Argo CD Application can source a git repository, a Helm
+chart, or an OCI artifact, and not a URL. Vendoring `standard-install.yaml` here
+would remove the clone at the cost of a megabyte of generated YAML that has to
+be refreshed whenever `versions.yaml`'s `crds.gateway_api` moves. That is the
+next thing to try if raising the deadline is not enough.
+
+### Defect 16. A controller that checks a CRD once, at startup, and exits
+
+Downstream of defect 15, and the clearest demonstration of what twelve seconds of
+sync-wave ordering costs. While `gateway-api-crds` was still timing out, KServe
+(wave 2) started, found no HTTPRoute CRD, and refused to run:
+
+```
+The InferenceService controller won't watch gateway.networking.k8s.io/v1/HTTPRoute
+resources because the CRD is not available.
+unable to create controller ... error: gateway API mode requires
+gateway.networking.k8s.io/v1 "HTTPRoute" CRD
+```
+
+`kserve-controller-manager` went to `CrashLoopBackOff` with 6 restarts and a
+`back-off 5m0s`, its `manager` container never ready. So `kserve` reported
+`Synced/Degraded` and `model-local` could not sync an InferenceService, because
+nothing was there to admit one.
+
+Two things this says that the earlier defects did not.
+
+First, Argo CD's `retry` fixes Argo CD's retries and nothing else. This is a
+**pod** exiting, so recovery is Kubernetes' own restart backoff, which grows to
+five minutes. The backoff eventually wins - the CRDs do arrive - but the
+recovery is measured in minutes and `task local:up` is holding a deadline
+meanwhile.
+
+Second, real ordering cannot come from sync waves as long as the gate between
+waves is child Application health, because a fresh Application reports Healthy
+at once (defect 2). The `retry` backoff makes Argo CD's own tasks converge; it
+cannot stop a container from starting too early.
+
+The fix that would give true ordering is a PreSync hook on the KServe
+Application that blocks until `crd/httproutes.gateway.networking.k8s.io` is
+Established. This repository already uses that shape:
+`platform/10-istio/gateway-service-nodeport.yaml` is a PostSync hook Job with
+its own ServiceAccount, Role, and RoleBinding. That is not written yet, and this
+paragraph is the record of why it should be rather than a claim that it is.
+
+### Run 3: `task local:up` exited 0, and the gateway had no authentication
+
+Run 3 started `2026-08-20T01:22:02Z` and **exited 0** at `01:51:31Z`, 29 minutes
+and 29 seconds. All sixteen Applications reported `Synced` and `Healthy` in three
+consecutive samples. Peak memory 18376 MiB of 23744, 65 pods.
+
+Every fix from runs 1 and 2 held. `istiod` was `Synced/Healthy` where it had been
+permanently Degraded. `kyverno` was Synced. `gateway-api-crds` timed out for ten
+minutes and then recovered on its own, which is the `retry` backoff doing exactly
+what it was added for. `model-local` reached Synced on `Retrying attempt #6`; in
+run 1 it would have stopped at five.
+
+Then the first request told a different story:
+
+```
+GET /v1/models with no token  ->  HTTP 200
+```
+
+**Everything green, and the gateway was open.** `security-oidc` was
+`Synced/Healthy`, every Kuadrant pod was `Running`, and the AuthPolicy said:
+
+```
+Accepted=False  reason=MissingDependency
+"[Gateway API] is not installed, please restart Kuadrant Operator pod once
+ dependency has been installed"
+```
+
+**Defect 17.** The Kuadrant operator checks for Gateway API at startup, caches
+the answer, and refuses every policy until someone restarts it. It says so in its
+own message. Nothing crashed, so Kubernetes restart backoff never applied - this
+is the difference between it and KServe in defect 16, which crash-looped and
+recovered on restart 7 without help. Kuadrant would have stayed like that for the
+life of the cluster.
+
+Restarting `deploy/kuadrant-operator-controller-manager` gave
+`Accepted=True Enforced=True`. And then every request returned **503**.
+
+**Defect 18.** The gateway's logs:
+
+```
+Wasm remote code fetch is unstable and may cause a crash
+Retry limit exceeded for fetching data from remote data source.
+Plugin kuadrant-wasm-shim failed to load
+Plugin configured to fail closed failed to load
+```
+
+Kuadrant enforces policy through a Wasm module that Envoy fetches from a remote
+registry, configured **fail closed**. The fetch failed, so the gateway rejected
+everything, valid tokens included. Restarting `deploy/llm-istio` made it fetch
+again, and the full path came good: 401 with no token, 401 with a forged token,
+200 with a Keycloak JWT serving `ornith-9b`.
+
+So criterion 1 is **still not settled**, and this is a sharper result than a
+failure would have been. The delivery path completed, reported success, and left
+a service that needed two manual restarts. `tests/smoke/10-gitops.bats` has a
+test named "a rebuilt cluster reaches a working endpoint with no manual steps".
+Two is not none.
+
+### What that changes
+
+**`task local:up` now ends with `clusters/local-kind/verify-serving.sh`.**
+Sixteen green Applications says the manifests reached the cluster. It does not
+say the request path works, and the criterion asks for a ready service. The
+script asserts an unauthenticated request is rejected with 401 - not merely that
+it fails, because 503 is the fail-closed case and would satisfy a weaker check -
+and then that a real JWT gets 200 with a model listed. On failure it prints the
+AuthPolicy conditions and the gateway's Wasm errors, which are the two things
+that explained this run.
+
+It was mutation tested, and the first attempt was a bad test rather than a good
+result: deleting the AuthPolicy did not trip it, because Argo CD's `selfHeal`
+restored the policy inside the 20 seconds of waiting (the replacement was 44
+seconds old when checked). Scaling `deploy/llm-istio` to zero did trip it, exit
+1, with the diagnosis printed. That mutation also exposed a defect in the
+script's own `code()` helper: `curl ... || printf 'curl-exit'` printed **both**,
+because curl writes `000` on a connection failure and then the `||` appended its
+own word, giving `returned 000curl-exit`. Output and exit code are captured
+separately now, the same fix `chat()` in `06-auth-quota.bats` needed.
+
+**`platform/25-kuadrant/gwapi-wait.yaml` is a PreSync hook** that blocks the
+Kuadrant sync until `gateway.networking.k8s.io/v1` serves `httproutes`. Sync
+waves cannot do this: they ordered the Applications correctly and ordered them
+twelve seconds apart, for the reason in defect 3.
+
+Two things about that hook were wrong when first written, and both were caught by
+checking rather than reasoning:
+
+- It globbed the CRD's status for `'"type":"Established"'` followed by
+  `'"status":"True"'`. The API server serializes a CRD condition with keys in the
+  order `lastTransitionTime, message, reason, status, type`, so `status` comes
+  **before** `type` and the assumed order is not the response's order. It now
+  asks the discovery endpoint whether the group serves `httproutes`, which is one
+  unambiguous token and a stronger claim: a group that is served is a CRD that is
+  Established and usable.
+- It carried a ClusterRole granting `get` on `customresourcedefinitions`, which
+  the discovery check does not use. Reading `/apis/*` needs no grant: the
+  built-in `system:discovery` binding covers `Group/system:authenticated`.
+  Verified with `kubectl auth can-i get /apis/gateway.networking.k8s.io/v1 --as`
+  that ServiceAccount, which answered `yes` with no bindings of its own. The
+  ClusterRole and its binding are gone, so the hook now asks for no privilege at
+  all.
+
+KServe gets no hook. It converges on its own through restart backoff, slowly, and
+a second hook is cost without a change in outcome. That is a scope decision, and
+this paragraph is where it is recorded.
+
 ## Safety notes
 
 - **Check your context before running anything.** Every `platform/*/install.sh`

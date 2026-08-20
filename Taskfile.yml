@@ -90,6 +90,11 @@ tasks:
       # `health.status: Healthy`. The script asserts sync status, the child
       # count, and health, in that order. Its header holds the full record.
       - ./clusters/local-kind/wait-for-sync.sh 30m
+      # Applications green is not a ready service. Run 3 on 2026-08-20 got
+      # all sixteen Synced and Healthy while the gateway served an
+      # unauthenticated caller, because the Kuadrant operator had started
+      # before the Gateway API CRDs and never recovers from that on its own.
+      - ./clusters/local-kind/verify-serving.sh
 
   local:cluster:
     desc: Create the kind cluster

@@ -14,10 +14,17 @@ VERSION="$(yq -r '.charts.argo_cd' versions.yaml)"
 # own ingress in a real deployment; phase 1 never exposes the Argo CD UI
 # through the gateway at all; this only lets `kubectl port-forward` reach the
 # API server over plain HTTP for local inspection.
+#
+# The two timeout/parallelism params were added 2026-08-20, after one
+# Application timed out cloning a 30 MB upstream repo and took four others down
+# with it. Sixteen Applications generating manifests at once on a laptop is the
+# cause, not the repo size; the numbers are in docs/deployment-walkthrough.md.
 helm upgrade --install argocd argo/argo-cd \
   --namespace argocd --create-namespace \
   --version "$VERSION" \
   --set configs.params."server\.insecure"=true \
+  --set configs.params."controller\.repo\.server\.timeout\.seconds"=180 \
+  --set configs.params."reposerver\.parallelism\.limit"=4 \
   --wait --timeout 10m
 
 kubectl -n argocd rollout status deploy/argocd-server --timeout=5m

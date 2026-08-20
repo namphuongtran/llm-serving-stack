@@ -6,25 +6,41 @@ without changing the control plane or the repository shape.
 
 Status: **run for the first time on 2026-08-19, and partly proven.** Until that
 day this line read "code-complete, unrun", and everything below it was written
-and statically checked but never observed. A cluster has now run it.
+and statically checked but never observed. Since then it has been run three
+ways: by hand layer by layer, by Argo CD from git, and by CI.
 
 All thirteen layers came up on a 3-node `kind` cluster and the service answered a
 real request: HTTP 401 without a token, HTTP 200 with a JWT from Keycloak, and a
-streaming chat completion. `docs/deployment-walkthrough.md` is the account, with
-every number dated, and `tools/step-up.sh` is how to repeat it one layer at a
-time.
+streaming chat completion. Argo CD reached the same working service from git on
+2026-08-20. `docs/deployment-walkthrough.md` is the account, with every number
+dated, and `tools/step-up.sh` is how to repeat it one layer at a time.
 
-**Two of the nine phase 1 acceptance criteria now hold. Seven do not, and they
-are not held up by the same thing.** Criterion 1 has not been settled because the
-walkthrough used the imperative path, so `task local:up` itself is still
-unobserved. The rest are untested rather than failing. The table under
+**Three of the nine phase 1 acceptance criteria now hold, and the six that do
+not are not held up by the same thing.** Criteria 1 and 9 have run and failed,
+each on a named defect. The other four are untested. The table under
 "What is unproven" says which is which.
 
-Running it found seven defects that four separate static review passes had all
+Running it is what found the defects, and static review did not. The first run
+found seven that four separate review passes over the whole repository had all
 missed: a file mode that broke `task local:up` at its second command, a bash 3.2
 array expansion that killed the KServe install, two selectors naming a label
 Istio removed in 1.24, and three tests that passed while the thing they named was
-broken. Each is recorded where it was found.
+broken.
+
+The pull-based path then found fifteen more, and none of them was visible from
+the imperative path. Two are worth knowing before reading any of this:
+
+- Argo CD applies **client-side** by default, writing each manifest into a
+  262144-byte annotation. Five of the fifteen charts here ship CRDs larger than
+  that, so KServe, Kyverno, Kuadrant, the observability stack, and KEDA all
+  failed to install. `helm install` never writes that annotation, which is why
+  the imperative path installs the same charts without complaint.
+- An Argo CD Application that fails to read its git path still reports
+  `health.status: Healthy`. That one property broke both the acceptance check
+  and sync-wave ordering, and it made `task local:up` exit 0 in one second on a
+  cluster where nothing had been deployed.
+
+Each defect is recorded where it was found.
 
 Three kinds of gap appear in this repository, and they are not the same kind:
 
@@ -132,15 +148,15 @@ cluster, then record the result and the date here.
 
 | # | Criterion | Status | Settle it |
 |---|---|---|---|
-| 1 | `task local:up` takes an empty machine to a ready service | **fails 2026-08-20** after two runs. The service ANSWERED on run 2; the command still exited 201. Thirteen defects found, all fixed, re-run owed | `task local:down && task local:up` |
+| 1 | `task local:up` takes an empty machine to a ready service | **not settled 2026-08-20** after three runs. Run 3 exited **0** with all sixteen Applications green, and the gateway had no authentication. Eighteen defects found, all fixed, re-run owed | `task local:down && task local:up` |
 | 2 | A JWT obtained from Keycloak returns a streamed chat completion | **HOLDS 2026-08-19** | `bats tests/smoke/03-identity.bats tests/contract/01-openai-api.bats` |
 | 3 | A request without a JWT is rejected with 401 | **HOLDS 2026-08-19** | `bats tests/smoke/06-auth-quota.bats` |
-| 4 | Exceeding the token quota returns 429 | untested | `bats tests/smoke/06-auth-quota.bats` |
+| 4 | Exceeding the token quota returns 429 | **HOLDS 2026-08-20**, in CI. Not reachable on the local engine, see below | `bats tests/smoke/06-auth-quota.bats` |
 | 5 | Grafana shows TTFT p95 and requests waiting from real traffic | untested | `bats tests/smoke/05-observability.bats` |
 | 6 | Under load, KEDA scales the predictor above its floor of 2 replicas, to 3, with evidence | untested | `bats tests/smoke/07-autoscaling.bats` |
 | 7 | Draining a node keeps the service available, PDB holding | untested | `bats tests/smoke/08-availability.bats` |
 | 8 | The recovery drill runs and its recovery time is committed | untested | `task drill:recovery` |
-| 9 | CI is green on an arm64 runner | **fails 2026-08-20**, first run ever. `lint` and `policy` green; the two cluster jobs failed on test defects, not on the platform | `gh run list`, after a push to `main` or a pull request |
+| 9 | CI is green on an arm64 runner | **fails 2026-08-20** on two tests in one file, down from a 45-minute timeout on the first run. `lint` and `policy` green | `gh run list`, after a push to `main` or a pull request |
 
 Criterion 1 is the one to read carefully. It was run for the first time on
 2026-08-20, on a cluster created from empty, and it failed. Seven defects came
@@ -158,7 +174,30 @@ Two of the seven are worth naming here:
   failed. `helm install` never writes that annotation, which is why the
   imperative path installs the same charts without complaint.
 
-Run 2 is the one to read. It got the whole way to a working service:
+Run 3 is the one to read, and it is the reason this criterion is written as
+"not settled" rather than "fails". It exited **0**. All sixteen Argo CD
+Applications were `Synced` and `Healthy` in three consecutive samples. And the
+first request was:
+
+```
+GET /v1/models with no token  ->  HTTP 200
+```
+
+The Kuadrant operator had started before the Gateway API CRDs existed, caches
+that, and refuses every policy until it is restarted by hand - it says so in its
+own status message. Nothing crashed, so nothing restarted it. Then a second
+manual restart was needed, of the gateway itself, because Kuadrant enforces
+through a Wasm module Envoy fetches from a remote registry and that fetch is
+configured to fail closed. After both restarts the path was correct: 401 with no
+token, 401 with a forged one, 200 with a Keycloak JWT.
+
+Two manual restarts is not none, and this criterion asks for none. `task
+local:up` now ends with `clusters/local-kind/verify-serving.sh`, which asserts
+the request path rather than the Application list, so a run cannot report success
+over an open gateway again. `platform/25-kuadrant/gwapi-wait.yaml` is a PreSync
+hook that stops the ordering problem at its source.
+
+Run 2 is worth reading too. It got the whole way to a working service:
 
 ```
 GET /v1/models, no token                 -> HTTP 401

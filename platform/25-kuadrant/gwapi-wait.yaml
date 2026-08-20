@@ -1,0 +1,115 @@
+# A PreSync hook that blocks this layer until the Gateway API CRDs exist.
+#
+# WHY. The Kuadrant operator checks for Gateway API at startup and caches the
+# answer. If it starts first, every AuthPolicy and TokenRateLimitPolicy stays
+#   Accepted=False  reason=MissingDependency
+#   "[Gateway API] is not installed, please restart Kuadrant Operator pod once
+#    dependency has been installed"
+# and the operator says so itself: it does not recover on its own. Nothing
+# crashes, so Kubernetes restart backoff never applies either.
+#
+# That is what happened on run 3 of the pull path, 2026-08-20. All sixteen
+# Applications reported Synced and Healthy, and the gateway served
+# `/v1/models` to a caller with no token, because no policy was enforcing.
+# Restarting this one Deployment by hand fixed it, which is a manual step, and
+# criterion 1 asks for none.
+#
+# Sync waves cannot do this job. They ordered the Applications correctly and
+# they ordered them twelve seconds apart, because the gate between waves is a
+# child Application's health and a fresh Application reports Healthy at once.
+# See docs/deployment-walkthrough.md, "The pull-based path".
+#
+# KServe has the same dependency and gets no hook here. It crash-loops instead
+# of caching, so Kubernetes restarts it until the CRDs arrive - observed
+# recovering on restart 7 the same day. Slow, but it converges without a human.
+# Kuadrant does not, which is why this file exists for Kuadrant only.
+#
+# This does NOT repair a cluster that is already in that state: the hook gates
+# a sync, it cannot restart a Deployment that synced earlier. On such a cluster,
+# run the restart the message asks for.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kuadrant-gwapi-wait
+  namespace: kuadrant-system
+---
+# No Role, ClusterRole, or binding, and that is deliberate rather than an
+# omission. A first draft granted `get` on customresourcedefinitions, which the
+# discovery check below does not use. Reading /apis/* needs no grant at all:
+# the built-in ClusterRoleBinding `system:discovery` binds
+# Group/system:authenticated to nonResourceURLs ["/api","/api/*","/apis",
+# "/apis/*", ...] with verb get. Confirmed 2026-08-20 with
+#   kubectl auth can-i get /apis/gateway.networking.k8s.io/v1 \
+#     --as=system:serviceaccount:kuadrant-system:kuadrant-gwapi-wait
+# which answered `yes` against a cluster where this ServiceAccount had no
+# bindings of its own.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kuadrant-gwapi-wait
+  namespace: kuadrant-system
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    # BeforeHookCreation, matching platform/10-istio/gateway-service-nodeport.yaml:
+    # a Job's pod template is immutable, so the previous run must go before this
+    # one is created or every resync fails on an immutable field.
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: kuadrant-gwapi-wait
+      containers:
+        # curl and a shell, the same image and digest the istio hook uses. The
+        # official kubectl image is distroless and has no shell, so this talks
+        # to the API server over HTTPS with the ServiceAccount token instead.
+        - name: wait
+          image: curlimages/curl:8.21.0@sha256:56bc0130aabaada5c04bb18d8d7f75e7a78fbcaa38ad44e1811c8c7720606d84
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              API=https://kubernetes.default.svc
+              GROUP=/apis/gateway.networking.k8s.io/v1
+              TOKENFILE=/var/run/secrets/kubernetes.io/serviceaccount/token
+              CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              # It asks the DISCOVERY endpoint whether the group serves
+              # httproutes, rather than reading the CRD's Established condition.
+              #
+              # The condition check was written first and was fragile by
+              # construction: it globbed for '"type":"Established"' followed by
+              # '"status":"True"', and the API server serializes a CRD condition
+              # with its keys in the order lastTransitionTime, message, reason,
+              # status, type - so `status` comes BEFORE `type` and the two-token
+              # order the glob assumed is not the order the response has.
+              # Confirmed by reading a live response on 2026-08-20.
+              #
+              # This form matches ONE unambiguous token, and it asserts something
+              # stronger: a group that is served is a CRD that is Established and
+              # usable, which is exactly what Kuadrant needs. A group with no
+              # established CRD returns 404, not an empty list.
+              #
+              # 20 minutes. The CRDs come from an Application that clones a
+              # 30 MB upstream repository, and that clone has taken more than
+              # 60 seconds under load on this hardware.
+              i=0
+              while [ "$i" -lt 120 ]; do
+                body="$(curl -sS --cacert "$CACERT" \
+                  -H "authorization: Bearer $(cat "$TOKENFILE")" \
+                  "$API$GROUP" || true)"
+                case "$body" in
+                  *'"name":"httproutes"'*)
+                    echo "gateway.networking.k8s.io/v1 serves httproutes"; exit 0 ;;
+                esac
+                i=$((i + 1))
+                sleep 10
+              done
+              echo "gateway.networking.k8s.io/v1 did not serve httproutes within 1200s" >&2
+              echo "last response: $body" >&2
+              exit 1
+          resources:
+            # Required by policy/require-resource-limits.yaml in namespace llm,
+            # and set here too rather than relying on the namespace it lands in.
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
