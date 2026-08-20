@@ -104,10 +104,24 @@ spec:
                 body="$(curl -sS --cacert "$CACERT" \
                   -H "authorization: Bearer $(cat "$TOKENFILE")" \
                   "$API$GROUP" || true)"
-                case "$body" in
+                # Whitespace stripped before matching. The API server
+                # pretty-prints this response, so the live body reads
+                # `"name": "httproutes"` WITH a space, and a glob written
+                # without one never matches. The first version of this check was
+                # validated against `kubectl get --raw`, which returns compact
+                # JSON - the right token, verified against the wrong
+                # serialisation. Found by running the hook on 2026-08-20, where
+                # it sat silent because nothing matched.
+                flat="$(printf '%s' "$body" | tr -d ' \n\t')"
+                case "$flat" in
                   *'"name":"httproutes"'*)
                     echo "gateway.networking.k8s.io/v1 serves httproutes"; exit 0 ;;
                 esac
+                # Progress on every attempt. The first version printed nothing
+                # until it matched or gave up, so a failure looked exactly like
+                # twenty minutes of hanging - the same defect that killed a CI
+                # job for 39 minutes, recorded in docs/deployment-walkthrough.md.
+                echo "attempt $i: gateway.networking.k8s.io/v1 does not serve httproutes yet (${#body} bytes)"
                 i=$((i + 1))
                 sleep 10
               done
