@@ -718,8 +718,8 @@ files are named in the list above only in the sense that "this one" now means
 The prose above names seven files including this one and omits
 `docs/sad/07-deployment-view.md`. The block that used to sit here named seven
 including `07-deployment-view.md` and omitted this one. Neither set is the real
-one. Re-measured 2026-08-20 against tracked files, there are **16 markers across
-eleven files**:
+one. Re-measured **2026-08-21** against tracked files, there are **14 markers
+across nine files**:
 
 ```
 .github/workflows/ci.yml                       4
@@ -727,13 +727,18 @@ docs/STATUS.md                                 1
 docs/sad/07-deployment-view.md                 1
 platform/10-istio/telemetry.yaml               1
 platform/12-kyverno/install.sh                 1
-platform/30-observability/podmonitor.yaml      1
 platform/30-observability/recording-rules.yaml 1
 platform/30-observability/tempo.yaml           2
-security/oidc/tokenratelimitpolicy.yaml        1
 tests/contract/01-openai-api.bats              1
 tests/smoke/05-observability.bats              2
 ```
+
+It was 16 across eleven earlier the same day, and both retirements are worth
+naming because they went in opposite directions. `tokenratelimitpolicy.yaml`'s
+marker was replaced by the record of what happened when it was ignored: the
+change it warned about was pushed, the quota failed open, and CI found it (R25).
+`podmonitor.yaml`'s was retired the way a marker is supposed to be, by taking the
+measurement it named.
 
 It read 13 across eight files earlier the same day, before R13, R14, and R18
 were fixed. Each of those three fixes brought a marker, because each changes a

@@ -26,13 +26,14 @@ spec:
   # so the label arrives as `serving_kserve_io_inferenceservice`. That name is
   # what recording-rules.yaml and scaledobject.yaml both match on.
   #
-  # **Untried (2026-08-20):** the sanitised label name. If it is wrong the label
-  # is simply absent, the ScaledObject's filter matches nothing, its `or
-  # vector(0)` returns 0, and KEDA silently never scales. Settle it on a live
-  # cluster before trusting the autoscaler:
-  #   kubectl -n observability exec deploy/kube-prometheus-stack-prometheus -- \
-  #     wget -qO- 'localhost:9090/api/v1/series?match[]=llamacpp:requests_deferred'
-  # and read whether serving_kserve_io_inferenceservice is in the result.
+  # Settled 2026-08-21 on a live cluster, because a wrong label name here is
+  # silent: the ScaledObject's filter would match nothing, its `or vector(0)`
+  # would return 0, and KEDA would never scale. Every active predictor target
+  # reports serving_kserve_io_inferenceservice, and
+  # llmstack:requests_waiting:by_model returns one series per model, so the
+  # ScaledObject's query returns a single value. Re-check it the same way after
+  # any change to this file or to the label KServe puts on predictor Pods:
+  #   /api/v1/targets?state=active   read .labels of the llm-predictors pool
   podTargetLabels: [serving.kserve.io/inferenceservice]
   podMetricsEndpoints: [{ port: http, path: /metrics, interval: 15s }]
 ---
