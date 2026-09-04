@@ -115,6 +115,54 @@ names the same way this ADR read llama.cpp's - from vLLM's documentation,
 pinned to whatever commit its own image resolves to. No dashboard panel
 changes, because no panel names an engine.
 
+## A correction to the section above, found by reading vLLM's own metric names
+
+Added 2026-09-04, in the same spirit as the cost paragraph appended to
+[ADR 0005](0005-two-runtimes-one-control-plane.md): the decision recorded here
+is unchanged and still correct, and one sentence about what it would cost was
+optimistic. The sentence stays, and this section says where it is wrong.
+
+"Adding vLLM means adding a second source expression to each existing recording
+rule" holds for three of the four capabilities that section implies. It does not
+hold for prefix cache hit rate.
+
+vLLM publishes **no** hit-rate metric. It publishes two counters, and the rate
+has to be derived from them. Read from
+`vllm/v1/metrics/loggers.py` on `main`, 2026-09-04:
+
+| Needed | vLLM metric | Type | Line |
+|---|---|---|---|
+| KV cache utilisation | `vllm:kv_cache_usage_perc` | Gauge | 562 |
+| Requests waiting | `vllm:num_requests_waiting` | Gauge | 504 |
+| Time to first token | `vllm:time_to_first_token_seconds` | Histogram | 797 |
+| Prefix cache hit rate | **does not exist** | | |
+| ... hits | `vllm:prefix_cache_hits` | Counter | 596 |
+| ... queries | `vllm:prefix_cache_queries` | Counter | 585 |
+
+So `llmstack:prefix_cache_hit_rate` must be a **division of two counters**, not a
+second `or` branch on an existing expression. It is the one rule in this file
+whose shape changes when the second engine arrives.
+
+**Two names that do not exist, and would fail silently.** `vllm:gpu_cache_usage_perc`
+was removed; a grep for `gpu_cache_usage` in `loggers.py` returns nothing on
+2026-09-04. And `hit_rate` appears in that file only as a Python attribute on a
+log line, never as a metric `name=`. A recording rule written against either
+name produces no series, and an empty panel is indistinguishable from a broken
+one, which is the exact failure this ADR's dashboard note already warns about.
+
+**One thing gets better, not worse.** The "Panels this engine cannot fill" table
+says of time to first token that llama.cpp exposes "no histogram or summary of
+any per-request latency" and that "There is nothing for a `histogram_quantile`
+to consume". `vllm:time_to_first_token_seconds` is a histogram, so in phase 2
+there is. The client-side prober stops being the only source, and
+`llmstack:ttft_seconds:p50` / `:p95` can read the engine directly on the GPU
+node.
+
+> **Untried (2026-09-04):** none of these vLLM series has been scraped by this
+> repository's Prometheus. The names above come from vLLM's source, not from a
+> running endpoint. Confirm them the same way ADR 0006 requires for llama.cpp,
+> by reading `/metrics` off a live predictor pod, before writing any rule.
+
 ## What must be confirmed against a live endpoint
 
 > **Unmeasured (2026-08-19):** whether the `llamacpp:*` series above are

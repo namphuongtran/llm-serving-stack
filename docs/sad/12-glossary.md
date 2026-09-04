@@ -18,7 +18,9 @@ sets it is named.
 | **Queue depth** | The engine's own count of requests waiting for a slot. `llamacpp:requests_deferred`, normalised to `llmstack:requests_waiting`. The autoscaling signal | [`docs/06-why-otel.md`](../06-why-otel.md) |
 | **Token quota** | A budget counted from the response's own `usage.total_tokens`, not from a request count | [`docs/04-why-kuadrant.md`](../04-why-kuadrant.md) |
 | **GGUF** | The quantised model file format llama.cpp loads. One file, verified here against a recorded `sha256` | `models/ornith-9b/base/model.yaml` |
-| **Engine** | The process that runs the model and serves the OpenAI-compatible API. llama.cpp in phase 1, vLLM from phase 2 | [ADR 0005](../adr/0005-two-runtimes-one-control-plane.md) |
+| **Engine** | The process that runs the model and serves the OpenAI-compatible API. llama.cpp in phase 1. **Both** llama.cpp and vLLM in phase 2, on the same node, so the benchmark changes one variable | [ADR 0005](../adr/0005-two-runtimes-one-control-plane.md), [ADR 0010](../adr/0010-two-engines-one-cluster.md) |
+| **Engine contract** | The four things any engine here must provide: the OpenAI HTTP surface, readiness that is true only after weights load, Prometheus metrics with a required minimum set, and an OTLP traces endpoint. The fourth is unmet in phase 1, because llama.cpp emits no traces | [ADR 0005](../adr/0005-two-runtimes-one-control-plane.md) |
+| **Alias** | The served model name a caller puts in a request's `model` field, set by `--alias`. A model fact, never a runtime fact. In phase 2 the two engines carry different aliases so a result can name the engine that produced it | [ADR 0010](../adr/0010-two-engines-one-cluster.md) |
 
 ## Platform
 
@@ -27,7 +29,8 @@ sets it is named.
 | **Ambient mode** | Istio without per-pod sidecars: one `ztunnel` per node. Chosen because the whole stack shares one laptop | [ADR 0003](../adr/0003-gateway-istio-ambient.md) |
 | **`ext_proc`** | Envoy's external processing filter. The Gateway API Inference Extension's endpoint picker is an `ext_proc` server, so a gateway without it cannot do cache-aware routing | [ADR 0003](../adr/0003-gateway-istio-ambient.md) |
 | **`ServingRuntime`** | The KServe object that supplies the engine: image, args, ports, probes. **No model fact may appear in one** | `runtimes/llamacpp-arm64/` |
-| **`InferenceService`** | The KServe object that supplies the model: format, runtime name, arguments. **No engine fact may appear in one** | `models/ornith-9b/base/` |
+| **`InferenceService`** | The KServe object that binds one model to one engine: format, runtime name, arguments. The binding belongs to an **overlay**. `models/*/base/` names no engine, because one model is served by different engines in different phases | `models/ornith-9b/overlays/`, [ADR 0010](../adr/0010-two-engines-one-cluster.md) |
+| **Index digest** | The digest of a multi-architecture image index, as opposed to the digest of one of its per-architecture children. This repository pins the index, so one value is correct on arm64 and amd64 alike | [ADR 0009](../adr/0009-pin-index-digests-not-arch-children.md) |
 | **Standard mode** | KServe's plain deployment mode, without Knative. No scale to zero by default | [ADR 0002](../adr/0002-standard-mode-not-knative.md) |
 | **Sync wave** | An Argo CD annotation that orders Applications. Ordering, never a guarantee: an Application that cannot read its git path still reports `Healthy` | [05-building-blocks](05-building-blocks.md) |
 | **Overlay** | A Kustomize directory that adapts the base model for one environment: `local`, `ci`, `cost-saving`, `gpu-single`, `gpu-multi` | `models/ornith-9b/overlays/` |
