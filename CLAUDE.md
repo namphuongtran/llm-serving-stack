@@ -288,3 +288,33 @@ phase 1 build ran on, and nowhere else. A fresh clone does not get it. When a
 decision recorded only there matters to someone else, copy the reasoning into
 an ADR, a spec, or a code comment, which are the three places this repository
 keeps decisions that have to survive.
+
+## Agent skills
+
+Written by `/mattpocock-skills:setup-matt-pocock-skills` on 2026-09-04. The
+three files under `docs/agents/` tell the `mattpocock-skills` engineering
+skills where this repository keeps its issues, what its triage labels are
+called, and where its domain documents sit. Nothing the platform runs reads
+them.
+
+### Issue tracker
+
+Issues live in this repository's GitHub Issues, driven by the `gh` CLI. See
+`docs/agents/issue-tracker.md`. That file also carries a "PRs as a request
+surface" flag, set to `no`.
+
+### Triage labels
+
+The five canonical names, used as they are - `needs-triage`, `needs-info`,
+`ready-for-agent`, `ready-for-human`, and `wontfix`. So `docs/agents/triage-labels.md`
+is an identity table. All five exist on the GitHub repository as of 2026-09-04
+- `wontfix` was already there and the other four were created by hand, because
+the setup skill maps labels and never creates them.
+
+### Domain docs
+
+Single-context. The layout is a root `CONTEXT.md` plus `docs/adr/`. See
+`docs/agents/domain.md`. Note that `docs/adr/` exists and `CONTEXT.md` does
+not, so an agent reads the ADRs and skips the missing file in silence. Read
+`README.md` first and `docs/STATUS.md` second, as "What this repository is"
+above says. That order still holds and outranks the template.
