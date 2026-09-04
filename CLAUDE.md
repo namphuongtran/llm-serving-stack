@@ -314,7 +314,8 @@ the setup skill maps labels and never creates them.
 ### Domain docs
 
 Single-context. The layout is a root `CONTEXT.md` plus `docs/adr/`. See
-`docs/agents/domain.md`. Note that `docs/adr/` exists and `CONTEXT.md` does
-not, so an agent reads the ADRs and skips the missing file in silence. Read
-`README.md` first and `docs/STATUS.md` second, as "What this repository is"
-above says. That order still holds and outranks the template.
+`docs/agents/domain.md`. `CONTEXT.md` was written on 2026-09-04 and is a
+**pointer, not a glossary**: the glossary of record is `docs/sad/12-glossary.md`,
+which predates it and already carries every term. Add a term there, never to
+`CONTEXT.md`. Read `README.md` first and `docs/STATUS.md` second, as "What this
+repository is" above says. That order still holds and outranks the template.

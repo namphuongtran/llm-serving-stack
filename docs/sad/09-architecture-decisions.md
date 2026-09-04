@@ -20,6 +20,9 @@ own decision.
 | [0005](../adr/0005-two-runtimes-one-control-plane.md) | Two engines, one control plane. llama.cpp on arm64, vLLM on GPU | 2026-08-17 | accepted | [01](01-introduction-and-goals.md), [02](02-constraints.md), [04](04-solution-strategy.md), [07](07-deployment-view.md) |
 | [0006](../adr/0006-metric-normalisation.md) | Normalise engine metrics into an `llmstack:` namespace | 2026-08-19 | accepted, **documentation-derived**: not yet observed on a running engine | [01](01-introduction-and-goals.md), [04](04-solution-strategy.md), [08](08-crosscutting-concepts.md) |
 | [0007](../adr/0007-failover-not-expressible-in-gateway-api.md) | Cross-backend failover is not expressible in core Gateway API. Withdrawn from phase 1 | 2026-08-19 | accepted, supersedes the design spec's failover row | [01](01-introduction-and-goals.md), [11](11-risks-and-debt.md) |
+| [0008](../adr/0008-weights-via-storage-initializer.md) | bf16 weights arrive through KServe's storage initializer. Reverses a decision held only in a code comment | 2026-09-04 | accepted, **untried**: nothing has run | none yet |
+| [0009](../adr/0009-pin-index-digests-not-arch-children.md) | Pin index digests, not architecture children. The architecture guard moves into the contract suite | 2026-09-04 | accepted, **untried**: nothing has run | none yet |
+| [0010](../adr/0010-two-engines-one-cluster.md) | Both engines run on the phase 2 node, as a controlled comparison | 2026-09-04 | accepted, **untried**: nothing has run | none yet |
 
 Note ADR 0006's status. It is accepted, and its metric mapping was derived from
 llama.cpp's own documentation pinned to the exact commit the running image was
@@ -39,6 +42,9 @@ cost it accepted.
 | 0005 | Two engines to keep working, and everything above them must stay engine independent. Also: llama.cpp emits no traces at all, found while implementing and not anticipated when the decision was taken |
 | 0006 | Three dashboard panels cannot be filled by this engine, and the time-to-first-token panel is filled by a client-side prober rather than by the engine |
 | 0007 | Phase 1 has no automatic fallback. When the engine is unavailable, callers get an error, and the spec no longer claims otherwise |
+| 0008 | Per-file `sha256` verification of the weights is lost, and `gpu-single` diverges from every other overlay in mechanism rather than only in values |
+| 0009 | The development machine can pull an amd64 image again. The architecture guard becomes a test result instead of a physical property, and eight digests plus the `kind` node image must be re-read |
+| 0010 | The two benchmark runs are not byte-identical: their `model` field differs by one string. And the vLLM `ServingRuntime` shape is undocumented by KServe |
 
 **One correction is recorded rather than quietly applied.** ADR 0004 originally
 named "a Redis for distributed counters" among its accepted costs. Phase 1
@@ -72,9 +78,11 @@ ADR, not a comment.
 
 ## Sources
 
-Every row in this page was read from the ADR file it names, on 2026-08-20. The
-`Cited by` column was built from the links written in the view files listed, not
-from a search.
+Rows 0001 to 0007 were read from the ADR file each one names, on 2026-08-20.
+Rows 0008 to 0010 were read from their own files on 2026-09-04, the day they
+were written. The `Cited by` column was built from the links written in the view
+files listed, not from a search, which is why the three new rows read "none
+yet": no view cites them so far.
 
 ---
 

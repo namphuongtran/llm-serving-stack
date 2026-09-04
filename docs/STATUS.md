@@ -661,6 +661,44 @@ Criterion 2 is met with one caveat recorded in
 5, and the failing one is about this model being a reasoning model, not about the
 API contract.
 
+### The six phase 2 acceptance criteria
+
+**Zero of six hold on 2026-09-04.** Written on that date, in a design session,
+**before any GPU machine existed**. That order is deliberate: a criterion
+invented after the numbers are in is not a criterion.
+
+Phase 2 inherits none of the nine above. Re-running the phase 1 criteria on
+rented hardware would test the cloud, not the phase. These six are the things
+only a GPU can settle.
+
+| # | Criterion | Status | Settle it |
+|---|---|---|---|
+| P2-1 | vLLM passes the contract suite with no edit to the suite | untried | `bats tests/contract` against the vLLM predictor, plus `git diff --stat tests/contract/` showing no change |
+| P2-2 | All thirteen layers install on amd64 from the same git tree | untried | `clusters/gpu-cloud/wait-for-sync.sh`: every Application Synced and Healthy in one sample |
+| P2-3 | Every `llmstack:*` rule produces a value from vLLM, with no dashboard edit | untried | Query each `llmstack:` series in Prometheus, plus `git diff --stat platform/30-observability/dashboards/` showing no change |
+| P2-4 | Time to first token comes from the engine, not the prober | untried | `vllm:time_to_first_token_seconds` returns data, and the TTFT panel no longer reads `llm_ttft_probe_seconds` |
+| P2-5 | vLLM traces reach the OTel Collector | untried | Spans visible in Tempo, through the `traces` pipeline that has had no producer since phase 1 |
+| P2-6 | A dated benchmark of both engines, same model, same machine, same day | untried | `./bench/run.sh` against both paths, into one dated `bench/results/` directory |
+
+Two of these are load-bearing beyond phase 2, and are worth reading twice.
+
+**P2-3 tests [ADR 0006](adr/0006-metric-normalisation.md)'s central claim**, that
+no dashboard names an engine so adding one changes only recording rules. That
+claim is already known to be partly wrong: prefix cache hit rate has no vLLM
+metric and must be derived by dividing two counters. See the correction section
+appended to that ADR on 2026-09-04.
+
+**P2-5 closes the fourth part of ADR 0005's engine contract**, which has been
+unmet since phase 1 began and has never been exercised by any engine. llama.cpp
+emits no traces at all. vLLM does, through `--otlp-traces-endpoint`
+(`vllm/engine/arg_utils.py:1489`, read 2026-09-04). This is the criterion most
+likely to fail, because the collector's `traces` pipeline has never carried a
+span.
+
+> **Untried (2026-09-04):** no GPU machine has been rented, and nothing in this
+> table has been attempted. `docs/sad/07-deployment-view.md` carries the same
+> record for the deployment topology.
+
 ### Measurements still owed
 
 Every owed number is marked at the place it belongs, not in a central list, so
