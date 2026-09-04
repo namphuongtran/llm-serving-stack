@@ -859,7 +859,18 @@ Nothing that requires a cluster. What holds without one:
   same as having run the test.
 
 **A passing dry-run does not prove the rendered values are the intended ones.**
-It proves the chart rendered. `CLAUDE.md`'s evidence rules record the two real
-defects that survived several review rounds on this branch for exactly this
-reason.
+It proves the chart rendered. Two real defects survived several review rounds
+on this branch for exactly this reason. Both were found on 2026-08-19, and only
+by reading rendered output instead of source:
+
+- `platform/20-kserve/values-kserve.yaml` set the chart's `gateway` key while
+  KServe reads `kserveGateway`. Every dry-run passed. The rendered ConfigMap
+  carried a Gateway this repository never creates. The two keys are explained
+  in `clusters/local-kind/apps/20-kserve.yaml`, which now sets both.
+- `clusters/local-kind/apps/30-observability.yaml` let Argo CD default the Helm
+  release name to the Application name. Every dry-run passed. The rendered
+  Service was `observability-kube-prometh-prometheus`, not the
+  `kube-prometheus-stack-prometheus` that other files here name. That
+  Application now sets `releaseName` and the comment above it lists the
+  consumers that would have broken.
 

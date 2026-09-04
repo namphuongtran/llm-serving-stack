@@ -89,7 +89,8 @@ can run something, run it.
 
 `docs/STATUS.md`'s "What is unproven" section is the tracked account. Update it
 whenever you change what is or is not verified. Do not write that something
-works because it renders. See "Evidence rules" below.
+works because it renders. README.md's "Rules this repository follows" states
+the rule, and `docs/STATUS.md` records the two defects behind it.
 
 `docs/UNVERIFIED.md` is a longer working account of the same thing. It is a
 local working document and is not in git (`.gitignore`), so do not cite it
@@ -216,37 +217,6 @@ CI runs on `ubuntu-24.04-arm`.
   command that establishes the fact. Match that density when you edit.
 - ADRs in `docs/adr/` are append-only. A changed decision gets a new ADR that
   supersedes the old one. The old one stays.
-
-## Evidence rules
-
-This repository is stricter than the default. The rules are stated in
-`README.md` and `docs/STATUS.md`, and enforced throughout the documents.
-
-- **A number without the date it was measured is invalid.** Re-measure. Do not
-  quote a number forward.
-- **A passing dry-run does not prove the rendered values are the intended
-  ones.** It proves the chart rendered. Check a values change by rendering the
-  chart and reading the value out of the output, not by reading the values
-  file back.
-
-  This is not hypothetical. Two real defects survived several review rounds on
-  this branch, and both were found on 2026-08-19 only by reading rendered
-  output instead of source:
-
-  - `platform/20-kserve/values-kserve.yaml` set the chart's `gateway` key
-    while KServe reads `kserveGateway`. Every dry-run passed. The rendered
-    ConfigMap carried a Gateway this repository never creates.
-  - `clusters/local-kind/apps/30-observability.yaml` let Argo CD default the
-    Helm release name to the Application name. Every dry-run passed. The
-    rendered Service was `observability-kube-prometh-prometheus`, not the
-    `kube-prometheus-stack-prometheus` that two consumers here name, plus a
-    third reference in this file. "Four" was the number written when this was
-    recorded and it was never counted; `git grep -l kube-prometheus-stack-prometheus`
-    returns three files on 2026-08-19, one of which is this one.
-- **Never edit a document to make a checker pass.** Fix the checker, or record
-  the finding as real.
-- Mark anything not yet observed with `> **Unmeasured (<date>):**` or
-  `**Untried (<date>):**`, and name the command that would produce the number.
 
 ## CI
 

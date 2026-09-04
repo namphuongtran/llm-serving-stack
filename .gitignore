@@ -39,8 +39,9 @@ docs/superpowers/
 # removed its load-bearing records were moved into tracked homes, so nothing
 # was lost with it: the nine phase 1 acceptance criteria and the proven/unproven
 # account are in README.md, the predicted sync-wave defect is a comment in
-# tests/smoke/10-gitops.bats, the two dry-run defects are in CLAUDE.md's
-# evidence rules, and the CI untried records are in the workflow itself.
+# tests/smoke/10-gitops.bats, the two dry-run defects are in docs/STATUS.md
+# with a comment beside each value, and the CI untried records are in the
+# workflow itself.
 # Owed measurements were never centralised there anyway - each lives beside
 # the claim it qualifies, findable with
 # `grep -rn '\*\*Unmeasured (20' . --exclude-dir=.git --exclude-dir=docs/superpowers`.

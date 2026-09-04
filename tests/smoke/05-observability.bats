@@ -213,7 +213,8 @@ start_grafana_portforward() {
 # Reads the rendered MeshConfig out of the cluster rather than the values file
 # in git. This repository has been bitten twice by a values key that was set and
 # never took effect, and both were found only by reading rendered output; see
-# CLAUDE.md's evidence rules.
+# docs/STATUS.md, "A passing dry-run does not prove the rendered values are
+# the intended ones".
 @test "the mesh is configured to export traces to the collector" {
   run k -n istio-system get cm istio -o jsonpath='{.data.mesh}'
   [ "$status" -eq 0 ]
