@@ -63,30 +63,53 @@ Two alternatives were rejected:
 > action on the GPU machine is to start this pod.** If it fails, the fallback is
 > `kserve/huggingfaceserver:v0.20.0-gpu` and that failure earns its own ADR.
 
-## A policy gap found while deciding this, independent of phase 2
+## A policy gap I claimed, and why it was wrong
 
-`security/oidc/authpolicy.yaml` sets `targetRef.name: ornith-9b-openai`, a single
-`HTTPRoute`. Separately, the comment at the top of
-`models/ornith-9b/overlays/local/httproute.yaml` records that with
-`enableGatewayApi: true`, KServe's own ingress reconciler generates an
-`HTTPRoute` named after the `InferenceService`, at `llm/ornith-9b`. The
-hand-written route is named `ornith-9b-openai` specifically to avoid colliding
-with it.
+The first draft of this ADR claimed that a KServe-generated `HTTPRoute` exists
+which `security/oidc/authpolicy.yaml` does not target, and recommended
+retargeting that policy at the `Gateway`. **Both halves were wrong.** The claim
+is corrected here rather than deleted, because the reasoning that produced it is
+the kind this repository is built to catch: it came from reading one comment and
+not reading the configuration that governs it.
 
-So a route exists that the `AuthPolicy` does not target.
+**There is no generated route.** `platform/20-kserve/values-kserve.yaml` sets
+`disableIngressCreation: true`, and `clusters/local-kind/apps/20-kserve.yaml:57`
+carries the same value in its inline Helm values. That file's own comment, dated
+2026-08-19, had already reached this conclusion and gave two independent reasons:
+the generated routes' hostnames come from `GenerateDomainName`, which produces
+`ornith-9b-llm.example.com`, and the Gateway's only listener has
+`hostname: llm.localtest.me`, so they would be rejected with
+`NoMatchingListenerHostname`; and even if they attached, they would be a second
+unauthenticated way into the model. KServe therefore creates no route and marks
+`IngressReady` true directly (`httproute_reconciler.go:1066`).
 
-> **Untried (2026-09-04):** whether that generated route is reachable from
-> outside the cluster has not been checked, and no claim is made either way
-> here. Check it on the local cluster, where it costs nothing:
-> `kubectl -n llm get httproute -o wide`, then send an unauthenticated request
-> to whatever hostname it carries. If it is reachable, this is a security
-> finding for phase 1 and belongs in `docs/sad/11-risks-and-debt.md` as a new
-> risk, not in phase 2's notes.
+Two live tests already assert this, and they predate this ADR:
+`tests/smoke/04-kserve.bats:74` reads `.disableIngressCreation` off the running
+ConfigMap, and `:80` requires `httproute/ornith-9b` and
+`httproute/ornith-9b-predictor` to be `NotFound`, failing with "KServe generated
+an HTTPRoute named $name, which disableIngressCreation should have prevented".
 
-**The `AuthPolicy` retargets to the `Gateway`** (`istio-system/llm`) rather than
-to one named route, so every route through that gateway is covered, including
-any KServe generates. This is worth doing whether or not the gap above turns out
-to be reachable, and whether or not phase 2 happens.
+So naming the hand-written route `ornith-9b-openai` is defence in depth against
+a collision that cannot currently happen, not a live gap.
+
+**Retargeting the `AuthPolicy` at the `Gateway` would break authentication
+entirely, and must not be done.** `platform/15-keycloak/httproute.yaml` attaches
+to the same `Gateway` `istio-system/llm`, on the same hostname
+`llm.localtest.me`, matching path prefixes `/realms` and `/resources`. The
+`AuthPolicy` requires a JWT whose issuer is
+`http://llm.localtest.me/realms/llm`. A Gateway-scoped version of it would
+demand a valid JWT in order to reach the endpoint that issues JWTs, and to fetch
+the JWKS used to verify them. That is a deadlock, and it would break `task
+token`, `task chat`, and every smoke test.
+
+`platform/10-istio/gateway.yaml` states the shared-Gateway design in its first
+line: "One Gateway for everything: the inference API and Keycloak share a
+hostname, so the JWT issuer matches the URL used to fetch JWKS". A policy scoped
+to that Gateway cannot distinguish the two consumers.
+
+**What stands.** The `AuthPolicy` stays targeted at the `HTTPRoute`. Decision
+part 2 above is what makes that sufficient for two engines: one route with two
+path-matched rules means one policy target, and both engines inherit it.
 
 ## Cost accepted
 
@@ -113,7 +136,13 @@ All read 2026-09-04.
   `llm = [ "vllm==0.24.0", ]`.
 - vLLM GitHub releases API: `tag_name: "v0.28.0"`, `published_at:
   "2026-08-26T09:46:30Z"`, `prerelease: false`.
-- `security/oidc/authpolicy.yaml`: `targetRef.name: ornith-9b-openai`.
-- `models/ornith-9b/overlays/local/httproute.yaml`, header comment: KServe
-  "generates an HTTPRoute named after the InferenceService, in the
-  InferenceService's namespace - literally llm/ornith-9b".
+- `security/oidc/authpolicy.yaml`: `targetRef.name: ornith-9b-openai`, and
+  `issuerUrl: http://llm.localtest.me/realms/llm`.
+- `platform/20-kserve/values-kserve.yaml` and
+  `clusters/local-kind/apps/20-kserve.yaml:57`: `disableIngressCreation: true`.
+- `tests/smoke/04-kserve.bats` lines 74 and 80: the two tests that assert no
+  KServe-generated route exists.
+- `platform/15-keycloak/httproute.yaml`: `parentRefs` naming Gateway
+  `istio-system/llm`, `hostnames: ["llm.localtest.me"]`, path prefixes
+  `/realms` and `/resources`.
+- `platform/10-istio/gateway.yaml`: one listener, `hostname: llm.localtest.me`.
