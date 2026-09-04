@@ -221,9 +221,8 @@ policy/        admission policies, shared by CI and cluster
 - A passing dry-run proves the chart rendered. It does not prove the rendered
   values are the intended ones. Read the rendered output.
 - Images are pinned by digest, never by a floating tag, and
-  `policy/disallow-floating-tags.yaml` enforces it at admission.
-- Configuration lives in git. Anything clicked in a web UI cannot be reproduced
-  and does not count.
+  `policy/disallow-floating-tags.yaml` enforces it at admission in namespace
+  `llm`.
 - Upstream version numbers come from the release notes of the exact version
   installed, recorded in `versions.yaml` with the date they were read.
 

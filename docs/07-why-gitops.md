@@ -20,25 +20,117 @@ phases, only which directory of Applications it points at.
 ## What breaks if this layer is removed
 
 Every platform layer this repository builds (`platform/00-cert-manager`
-through `platform/40-keda`, the model overlay, the OIDC policies) has an
-imperative install script that predates this task. Without Argo CD, "install
-everything" means running eight scripts by hand, in the right order, and
-remembering to re-run any of them by hand again after every git change. That
-is exactly the failure mode Task 12 exists to close: a step a human ran once
-and never wrote down is invisible until the cluster is rebuilt without that
-human present.
+through `platform/50-argocd`, the model overlay, the OIDC policies) has an
+imperative install script. Without Argo CD, "install everything" means running
+**nine** `install.sh` scripts by hand (counted 2026-09-04 with `ls
+platform/*/install.sh`), in the right order, and remembering to re-run any of
+them by hand again after every git change. That is exactly the failure mode this
+layer exists to close: a step a human ran once and never wrote down is invisible
+until the cluster is rebuilt without that human present.
+
+Running the nine in numeric order is also **not enough**, and this was found by
+doing it (`docs/deployment-walkthrough.md`, "The step order"):
+
+- `platform/10-istio/gateway-api-crds.sh` exists and is correct, and no
+  `install.sh` calls it. Only `.github/workflows/ci.yml` does. So the nine
+  scripts install no Gateway API CRDs, and the istio layer then fails with `no
+  matches for kind "Gateway"`. That ordering requirement lived only in CI.
+- `model` and `security` have **no imperative script at all**. They exist only
+  as Argo CD Applications, so the walkthrough applies the same manifests by
+  hand.
+
+Thirteen steps, nine scripts. The four-step gap is the argument.
+
+## What the second path found that the first could not
+
+Fifteen defects came out of the first three runs of the pull-based path, and
+**none of them was visible from the imperative path**. That is the argument for
+keeping two paths, stated as a result rather than as a principle. Two are worth
+knowing before editing anything under `clusters/local-kind/`.
+
+**Argo CD applies client-side by default**, which writes each rendered manifest
+into an annotation capped at 262144 bytes. Five of the fifteen charts here ship
+CRDs larger than that, so KServe, Kyverno, Kuadrant, the observability stack, and
+KEDA all failed to install. `helm install` never writes that annotation, which is
+exactly why the imperative path installs the same charts without complaint. One
+tool's default made five layers fail, and the other tool could not have shown it.
+
+**An Argo CD Application that fails to read its git path still reports
+`health.status: Healthy`.** That single property broke both the acceptance check
+and sync-wave ordering, and it made `task local:up` exit 0 **in one second** on a
+cluster where nothing had been deployed.
+
+The consequences are permanent, and they are why two scripts exist:
+
+| Belief | What replaced it |
+|---|---|
+| `.status.health.status` means the Application did something | `clusters/local-kind/wait-for-sync.sh` reads sync status, counts the children against the directory, and requires every Application green in the same sample |
+| Sixteen green Applications means the service works | `clusters/local-kind/verify-serving.sh` asserts the request path: 401 without a token, then 200 with a real JWT |
+
+Run 3 is why the second row is not paranoia. It exited **0**, all sixteen
+Applications were `Synced` and `Healthy` in three consecutive samples, and the
+first request was `GET /v1/models` with no token returning **HTTP 200**
+(`docs/STATUS.md`, criterion 1). Do not weaken `verify-serving.sh` to "not 200":
+503 is the fail-closed case and would satisfy that.
+
+R24 is the same shape, found later and still open. On 2026-08-21 a pushed change
+to the predictor's pod template could not roll out, because the Deployment's
+surge arithmetic deadlocks against this cluster's topology constraint.
+Throughout, the Application read `Synced` and `Healthy`, the `ServingRuntime` on
+the cluster carried the new spec, and the pod serving traffic carried the old
+one. **A green Application means git and the API server agree. It does not mean
+the workload changed.**
+
+One thing the pull path already had and the imperative path did not:
+`clusters/local-kind/root-app.yaml:28` sets `retry: limit 20`, so Argo CD rides
+out a webhook that is not reachable yet. The imperative scripts had no such
+retry, and four consecutive CI runs died on that gap before
+`platform/lib/apply.sh` was written (`docs/STATUS.md`, "The webhook readiness
+race").
 
 ## What it costs to run
 
 Argo CD itself is one more workload on a 32 GB machine already running Istio,
-Keycloak, Prometheus, KServe, and a 6 GB model. `platform/50-argocd/install.sh`
-does not set resource requests/limits explicitly (the chart's own defaults
-apply), so this is a real number this repository has not yet measured.
+Keycloak, Prometheus, KServe, and a 5.6 GB model. `platform/50-argocd/install.sh`
+does not set resource requests or limits explicitly, so the chart's own defaults
+apply.
+
+Measured 2026-08-19: the `argocd` step took **44 seconds** and moved the cluster
+from 6214 MiB to 7043 MiB, an **829 MiB** jump, taking the pod count from 50 to
+59 (`docs/deployment-log.tsv`). That is a whole-cluster delta rather than an
+isolated figure for the four Argo CD workloads.
 
 > **Unmeasured (2026-08-19):** `argocd-server`, `argocd-repo-server`,
-> `argocd-application-controller`, and `argocd-redis`'s combined memory
-> footprint on this machine, run
-> `kubectl -n argocd top pod --no-headers` once a cluster exists.
+> `argocd-application-controller`, and `argocd-redis`'s memory footprint
+> separately. **The reason has changed and the per-pod reading has not been
+> taken.** This marker originally said no cluster existed; one has existed since
+> 2026-08-19. Run `kubectl -n argocd top pod --no-headers` once a cluster is up.
+> kind installs no metrics-server, so `docker stats` on the node containers is
+> the fallback the rest of this repository uses.
+
+**Two further costs are not measured in megabytes, and both were found by
+running.**
+
+**Every value exists twice** (R3). An Argo CD Application is one git object and
+cannot read a values file from this repository, so chart values and image digests
+are copied inline into the Application. Changing a value or a digest means
+changing both copies, and no mechanism detects a half-applied change. Grep for
+the old string on every change.
+
+**The two paths are not interchangeable on an existing cluster, in either
+direction.** `./platform/12-kyverno/install.sh` on a cluster that Argo CD built
+exits 1 at its **first** command:
+
+```
+Error: unable to continue with install: ServiceAccount "kyverno-admission-controller"
+in namespace "kyverno" exists and cannot be imported into the current release:
+invalid ownership metadata; annotation validation error: missing key
+"meta.helm.sh/release-name"
+```
+
+Argo CD renders the chart and applies it, so Helm holds no release record.
+`CLAUDE.md` describes the install scripts as a working manual bootstrap, and that
+holds **only on a cluster those scripts built**.
 
 ## The one thing that surprised me while building it
 
