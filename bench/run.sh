@@ -21,7 +21,12 @@ ENGINE_NAME="$(basename "${ENGINE_IMAGE%%@*}" | cut -d: -f1)"
 OUT="bench/results/${DATE}-${MACHINE}-${ENGINE_NAME}"
 mkdir -p "$OUT"
 
-TOKEN="$(get_token llm-tier-pro)"
+# A command, not a token. The harness re-runs it before each token expires,
+# because every scenario outlives accessTokenLifespan 900 on this engine and a
+# single token turned 19 of 40 requests into 401 (R10,
+# docs/sad/11-risks-and-debt.md). The command reuses get_token rather than
+# reimplementing the grant.
+TOKEN_CMD="bash -c 'source tests/lib/helpers.bash && get_token llm-tier-pro'"
 
 jq -n \
   --arg date "$DATE" --arg machine "$MACHINE" --arg engine_image "$ENGINE_IMAGE" \
@@ -34,7 +39,7 @@ for f in ${SCENARIOS:-bench/scenarios/*.json}; do
   name="$(jq -r .name "$f")"
   echo "== $name"
   python3 bench/harness.py --scenario "$f" --base-url "http://llm.localtest.me" \
-    --token "$TOKEN" --model ornith-9b --out "$OUT/${name}.json"
+    --token-cmd "$TOKEN_CMD" --model ornith-9b --out "$OUT/${name}.json"
 done
 
 python3 bench/summarise.py --dir "$OUT" > "$OUT/summary.md"

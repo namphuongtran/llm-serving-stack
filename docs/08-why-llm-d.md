@@ -37,6 +37,8 @@ is available in phase 1.
 repository has ever had, and none of them can answer the question above.
 
 **1. No scenario can finish before its own token expires (R10).**
+Fixed 2026-10-04 and tested offline only; the account below is the 2026-08-20
+run as it happened (`docs/STATUS.md`, R10).
 `bench/run.sh:24` fetches one token for a whole run, and
 `platform/15-keycloak/realm-export.json` sets `accessTokenLifespan: 900`. The
 first completed run, `01-short.json`, 40 requests at concurrency 4, took about

@@ -99,9 +99,9 @@ under a cluster that was also failing, and should be read as a first data point
 rather than as this stack's performance.
 
 > **Unmeasured (2026-08-20):** clean benchmark numbers, from a run whose token
-> does not expire and whose gateway is not returning 500. Fix `bench/run.sh` to
-> refresh the token, then re-run `task bench` and commit the dated result
-> directory.
+> does not expire and whose gateway is not returning 500. The token refresh is
+> in as of 2026-10-04 (R10, tested offline only). Re-run `task bench` and commit
+> the dated result directory.
 
 The comparison worth running first is `03-shared-prefix.json` against
 `01-short.json` on the same engine. It shows whatever benefit a **single**
