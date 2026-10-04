@@ -130,7 +130,8 @@ token-lifetime reason above.
 > vLLM. Phase 2 settles it by pointing `runtimes/` at a vLLM `ServingRuntime`,
 > leaving `models/ornith-9b/` untouched, and running
 > `SCENARIOS=bench/scenarios/01-short.json ./bench/run.sh` against both engines.
-> Fix R10 first, or the second run will fail the same way the first did.
+> R10 is fixed as of 2026-10-04 but has been tested offline only, so the first
+> long run on either engine also checks the fix.
 
 The comparison is also the test of boundary 2 in `CLAUDE.md`: if swapping the
 engine touches anything outside `runtimes/`, the boundary did not hold, and this

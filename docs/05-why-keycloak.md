@@ -109,7 +109,9 @@ A third cost lands on every benchmark this repository runs.
 than that, so the token expires mid-run: 19 of 40 requests in the first completed
 benchmark returned HTTP 401 (R10). The identity layer is correct and the harness
 is wrong, and the shape of that mistake is worth keeping: a short-lived
-credential is a good default that quietly assumes short-lived work.
+credential is a good default that quietly assumes short-lived work. Fixed
+2026-10-04: the harness now re-fetches the token before it expires, tested
+offline only (`docs/STATUS.md`, R10).
 
 ## The one thing that surprised me while building it
 

@@ -247,9 +247,19 @@ The latency figures above come from 9 successful requests out of 40, on a cluste
 that was also failing. They are a first data point and not this stack's
 performance.
 
-> **Unmeasured (2026-08-20):** clean benchmark numbers. Fix `bench/run.sh` to
-> refresh the token during a run, then re-run `task bench` on a quiet cluster and
-> commit the dated result directory under `bench/results/`.
+> **Unmeasured (2026-08-20):** clean benchmark numbers. Re-run `task bench` on a
+> quiet cluster and commit the dated result directory under `bench/results/`.
+
+**The token half is fixed as of 2026-10-04 (R10), and only offline.** The harness
+now gets a command, `get_token` run through bash, and re-runs it when the
+current token has less than 60 seconds left. The gateway checks a token once,
+when the request arrives, so a token only has to be valid at send time and a
+long stream is not cut off. Against a local server that rejects expired tokens,
+with 65-second tokens over a 60-second run, the result was 0 errors in 40
+requests and 10 fetches. One fixed token on the same server got 36 HTTP 401 in
+40. That is a test of the refresh logic, not of Keycloak. Each result file now
+records `token_fetches`, so the next real run shows whether the refresh
+happened instead of leaving it assumed.
 
 ## The webhook readiness race
 
